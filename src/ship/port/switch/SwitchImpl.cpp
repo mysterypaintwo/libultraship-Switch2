@@ -42,9 +42,11 @@ void Ship::Switch::Init(SwitchPhase phase) {
             appletSetGamePlayRecordingState(true);
             appletHook(&applet_hook_cookie, on_applet_hook, NULL);
             appletSetFocusHandlingMode(AppletFocusHandlingMode_NoSuspend);
+#ifndef __SWITCH2__
             if (!hosversionBefore(8, 0, 0)) {
                 clkrstInitialize();
             }
+#endif
             hidsysInitialize();
             padConfigureInput(8, HidNpadStyleSet_NpadStandard);
             s32 total = 0; // unused
@@ -55,7 +57,9 @@ void Ship::Switch::Init(SwitchPhase phase) {
 
 void Ship::Switch::Exit() {
     socketExit();
+#ifndef __SWITCH2__
     clkrstExit();
+#endif
     appletSetGamePlayRecordingState(false);
 }
 
@@ -118,6 +122,12 @@ bool Ship::Switch::IsRunning() {
 }
 
 void Ship::Switch::GetDisplaySize(int* width, int* height) {
+#ifdef __SWITCH2__
+    // The Switch 2 handheld screen is 1080p, and 1080p is a safe docked size.
+    *width = 1920;
+    *height = 1080;
+    return;
+#endif
     switch (appletGetOperationMode()) {
         case DOCKED_MODE:
             *width = 1920;
@@ -131,6 +141,10 @@ void Ship::Switch::GetDisplaySize(int* width, int* height) {
 }
 
 void Ship::Switch::ApplyOverclock(void) {
+#ifdef __SWITCH2__
+    // The clock table is for the Switch 1 CPU. Switch 2 keeps its own clocks.
+    return;
+#endif
     SwitchProfiles perfMode = (SwitchProfiles)CVarGetInteger(CVAR_SWITCH_PERF_MODE, (int)Ship::MAXIMUM);
 
     if (perfMode >= 0 && perfMode <= Ship::POWERSAVINGM3) {
@@ -169,6 +183,7 @@ static void on_applet_hook(AppletHookType hook, void* param) {
             hasFocus = focus_state == AppletFocusState_InFocus;
 
             if (!hasFocus) {
+#ifndef __SWITCH2__
                 if (hosversionBefore(8, 0, 0)) {
                     pcvSetClockRate(PcvModule_CpuBus, SWITCH_CPU_SPEEDS_VALUES[Ship::STOCK]);
                 } else {
@@ -177,6 +192,7 @@ static void on_applet_hook(AppletHookType hook, void* param) {
                     clkrstSetClockRate(&session, SWITCH_CPU_SPEEDS_VALUES[Ship::STOCK]);
                     clkrstCloseSession(&session);
                 }
+#endif
             } else {
                 Ship::Switch::ApplyOverclock();
                 // reinitialize audio subsystem to fix audio problems after resuming from sleep
