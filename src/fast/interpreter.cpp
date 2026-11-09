@@ -11,6 +11,12 @@
 #include <dlfcn.h>
 #endif
 
+#ifdef __SWITCH__
+// Start and end of the program image, from the libnx linker script.
+extern "C" char __start__[];
+extern "C" char __end__[];
+#endif
+
 #include <any>
 #include <map>
 #include <set>
@@ -3976,6 +3982,9 @@ static bool IsValidResolvedAddress(uintptr_t addr) {
     HMODULE module = nullptr;
     return GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                               reinterpret_cast<LPCSTR>(addr), &module) != 0;
+#elif defined(__SWITCH__)
+    // The Switch has one static image and no dynamic loader.
+    return addr >= reinterpret_cast<uintptr_t>(__start__) && addr < reinterpret_cast<uintptr_t>(__end__);
 #else
     // For non-Windows platforms, check whether the address belongs to a loaded object.
     Dl_info info;
