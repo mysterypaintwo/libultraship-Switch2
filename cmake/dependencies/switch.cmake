@@ -16,17 +16,16 @@ if (NOT ${nlohmann_json_FOUND})
 endif()
 
 #=================== tinyxml2 ===================
-find_package(tinyxml2 QUIET)
-if (NOT ${tinyxml2_FOUND})
-    set(tinyxml2_BUILD_TESTING OFF)
-    FetchContent_Declare(
-        tinyxml2
-        GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
-        GIT_TAG 10.0.0
-        OVERRIDE_FIND_PACKAGE
-    )
-    FetchContent_MakeAvailable(tinyxml2)
-endif()
+# Always build tinyxml2 10. devkitPro's switch-tinyxml2 is too old
+# (no public XMLElement::FindAttribute) and names its target differently.
+set(tinyxml2_BUILD_TESTING OFF)
+FetchContent_Declare(
+    tinyxml2
+    GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
+    GIT_TAG 10.0.0
+    OVERRIDE_FIND_PACKAGE
+)
+FetchContent_MakeAvailable(tinyxml2)
 
 #=================== spdlog ===================
 find_package(spdlog QUIET)
