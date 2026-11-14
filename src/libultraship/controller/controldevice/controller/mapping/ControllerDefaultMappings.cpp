@@ -72,8 +72,20 @@ void ControllerDefaultMappings::SetDefaultSDLButtonToButtonMappings(
     }
 
     Ship::ControllerDefaultMappings::SetDefaultSDLButtonToButtonMappings({
+#ifdef __SWITCH__
+        // SDL buttons are positional on Switch: SDL A/B/X/Y are the Switch
+        // B/A/Y/X buttons. B is A and Y is B, as on the N64 pad, and the item
+        // C buttons are on the other face buttons: A is C-down, X is C-left and
+        // R is C-right. The right stick also stays on the C buttons.
+        { BTN_A, { SDL_CONTROLLER_BUTTON_A } },
+        { BTN_B, { SDL_CONTROLLER_BUTTON_X } },
+        { BTN_CDOWN, { SDL_CONTROLLER_BUTTON_B } },
+        { BTN_CLEFT, { SDL_CONTROLLER_BUTTON_Y } },
+        { BTN_CRIGHT, { SDL_CONTROLLER_BUTTON_RIGHTSHOULDER } },
+#else
         { BTN_A, { SDL_CONTROLLER_BUTTON_A } },
         { BTN_B, { SDL_CONTROLLER_BUTTON_B } },
+#endif
         { BTN_L, { SDL_CONTROLLER_BUTTON_LEFTSHOULDER } },
         { BTN_START, { SDL_CONTROLLER_BUTTON_START } },
         { BTN_DUP, { SDL_CONTROLLER_BUTTON_DPAD_UP } },

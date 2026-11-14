@@ -23,6 +23,14 @@ class Switch {
     static void CreateKeyboard();
     static void ShowKeyboard();
     static bool IsRunning();
+    // Asks to stop the main loop, as the HOME menu's close does. The app then
+    // shuts down and returns to the homebrew menu.
+    static void Quit();
+    // Switch 2: sets the present rate for the target FPS. Call it again after
+    // every swap interval change, which resets the rate to 60 Hz.
+    static void ApplyFrameRate(int fps, bool force = false);
+    // The display's highest refresh rate (120 on the Switch 2 screen).
+    static uint32_t GetRefreshRate();
     static void GetDisplaySize(int* width, int* height);
     static void ApplyOverclock();
     static void ShowErrorApplet(const char* format, ...);

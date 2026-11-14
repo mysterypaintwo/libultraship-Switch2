@@ -65,7 +65,7 @@ Context::~Context() {
     mConfig = nullptr;
     mLogger->flush();
     mLogger = nullptr;
-#ifndef _DEBUG
+#if !defined(_DEBUG) && !defined(__SWITCH__)
     mLogThreadPool = nullptr;
 #endif
 }
@@ -170,10 +170,17 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
         auto logPath = GetPathRelativeToAppDirectory(("logs/" + GetName() + ".log"));
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 10, 10);
         sinks.push_back(fileSink);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(__SWITCH__)
+        // On Switch, write each line right away: an async logger loses the lines
+        // still queued when the app crashes, and those are the ones that matter.
         mLogger = std::make_shared<spdlog::logger>("multi_sink", sinks.begin(), sinks.end());
+#ifdef _DEBUG
         GetLogger()->set_level(debugBuildLogLevel);
         GetLogger()->flush_on(spdlog::level::trace);
+#else
+        GetLogger()->set_level(releaseBuildLogLevel);
+        GetLogger()->flush_on(spdlog::level::info);
+#endif
 #else
         mLogThreadPool = std::make_shared<spdlog::details::thread_pool>(8192, 1);
         mLogger = std::make_shared<spdlog::async_logger>(GetName(), sinks.begin(), sinks.end(), mLogThreadPool,
