@@ -10,6 +10,14 @@
 
 #include <imgui_internal.h>
 
+// The Switch 2 draws the UI at 1080p in handheld mode too, where the Switch 1
+// drew it at 720p. A 1.5x font keeps the menus the same size on screen.
+#ifdef __SWITCH2__
+#define SWITCH_FONT_SIZE 36.0f
+#else
+#define SWITCH_FONT_SIZE 24.0f
+#endif
+
 #define DOCKED_MODE 1
 #define HANDHELD_MODE 0
 
@@ -68,7 +76,7 @@ void Ship::Switch::ImGuiSetupFont(ImFontAtlas* fonts) {
     config.FontDataOwnedByAtlas = false;
 
     strcpy(config.Name, "Nintendo Standard");
-    fonts->AddFontFromMemoryTTF(fonts_std.address, fonts_std.size, 24.0f, &config, fonts->GetGlyphRangesCyrillic());
+    fonts->AddFontFromMemoryTTF(fonts_std.address, fonts_std.size, SWITCH_FONT_SIZE, &config, fonts->GetGlyphRangesCyrillic());
 
     strcpy(config.Name, "Nintendo Ext");
     static const ImWchar ranges[] = {
@@ -76,7 +84,7 @@ void Ship::Switch::ImGuiSetupFont(ImFontAtlas* fonts) {
         0xE105, 0xE110, 0xE116, 0xE121, 0xE12C, 0xE130, 0xE13C, 0xE140, 0xE14D, 0xE150, 0xE153, 0,
     };
 
-    fonts->AddFontFromMemoryTTF(fonts_ext.address, fonts_ext.size, 24.0f, &config, ranges);
+    fonts->AddFontFromMemoryTTF(fonts_ext.address, fonts_ext.size, SWITCH_FONT_SIZE, &config, ranges);
     fonts->Build();
 
     plExit();
@@ -102,6 +110,50 @@ void Ship::Switch::ImGuiProcessEvent(bool wantsTextInput) {
 
 bool Ship::Switch::IsRunning() {
     return isRunning;
+}
+
+void Ship::Switch::Quit() {
+    isRunning = false;
+}
+
+void Ship::Switch::ApplyFrameRate(int fps, bool force) {
+#ifdef __SWITCH2__
+    static int appliedFps = -1;
+    if (fps == appliedFps && !force) {
+        return;
+    }
+    appliedFps = fps;
+    // 0 presents every refresh. Without this call the window presents at the
+    // swap interval / 60 s, so it never goes above 60 FPS, even at 120 Hz.
+    u32 at120 = (fps <= 0 || fps >= 120) ? 0 : fps;
+    u32 at60 = (fps <= 0 || fps >= 60) ? 0 : fps;
+    Result rc = nwindowSetFrameRates(nwindowGetDefault(), at120, at60, true);
+    if (R_FAILED(rc)) {
+        SPDLOG_WARN("nwindowSetFrameRates({}, {}) failed: 0x{:x}", at120, at60, rc);
+    }
+#endif
+}
+
+uint32_t Ship::Switch::GetRefreshRate() {
+#ifdef __SWITCH2__
+    // The FPS cap reads this every frame, so query the display once. On a
+    // 60 Hz TV, vsync still holds the game to 60 FPS.
+    static uint32_t sRefreshRate = 0;
+    if (sRefreshRate != 0) {
+        return sRefreshRate;
+    }
+    Vi2Display* display = nullptr;
+    Vi2DisplayModeCapability caps = {};
+    if (R_SUCCEEDED(nwindowGetVi2Display(nwindowGetDefault(), &display)) && display != nullptr &&
+        R_SUCCEEDED(vi2QueryDisplayModeCapability(display, &caps))) {
+        // Bit 1 is 120 Hz, bit 0 is 60 Hz.
+        sRefreshRate = ((caps.refresh_rates | caps.refresh_rates_secondary) & BIT(1)) ? 120 : 60;
+        return sRefreshRate;
+    }
+    // No display yet (before the window opens): ask again next time.
+    return 60;
+#endif
+    return 60;
 }
 
 void Ship::Switch::GetDisplaySize(int* width, int* height) {

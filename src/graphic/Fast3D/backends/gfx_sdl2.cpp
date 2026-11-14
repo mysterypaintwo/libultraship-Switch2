@@ -279,6 +279,11 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
 }
 
 void GfxWindowBackendSDL2::GetActiveWindowRefreshRate(uint32_t* refresh_rate) {
+#ifdef __SWITCH__
+    // SDL always reports 60 Hz here.
+    *refresh_rate = Ship::Switch::GetRefreshRate();
+    return;
+#endif
     int display_in_use = SDL_GetWindowDisplayIndex(mWnd);
 
     SDL_DisplayMode mode;
@@ -427,6 +432,9 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
         SDL_GL_MakeCurrent(mWnd, mCtx);
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
+#ifdef __SWITCH__
+        Ship::Switch::ApplyFrameRate(mTargetFps, true);
+#endif
 #ifdef __SWITCH__
         if (mCtx == nullptr) {
             SPDLOG_ERROR("SDL_GL_CreateContext failed: {}", SDL_GetError());
@@ -721,6 +729,9 @@ void GfxWindowBackendSDL2::SwapBuffersBegin() {
     if (mVsyncEnabled != nextVsyncEnabled) {
         mVsyncEnabled = nextVsyncEnabled;
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
+#ifdef __SWITCH__
+        Ship::Switch::ApplyFrameRate(mTargetFps, true);
+#endif
         SDL_RenderSetVSync(mRenderer, mVsyncEnabled ? 1 : 0);
     }
 
@@ -737,6 +748,9 @@ double GfxWindowBackendSDL2::GetTime() {
 
 void GfxWindowBackendSDL2::SetTargetFPS(int fps) {
     mTargetFps = fps;
+#ifdef __SWITCH__
+    Ship::Switch::ApplyFrameRate(fps);
+#endif
 }
 
 void GfxWindowBackendSDL2::SetMaxFrameLatency(int latency) {
@@ -752,7 +766,11 @@ bool GfxWindowBackendSDL2::CanDisableVsync() {
 }
 
 bool GfxWindowBackendSDL2::IsRunning() {
+#ifdef __SWITCH__
+    return mIsRunning && Ship::Switch::IsRunning();
+#else
     return mIsRunning;
+#endif
 }
 
 void GfxWindowBackendSDL2::Destroy() {

@@ -49,6 +49,12 @@ Fast3dWindow::Fast3dWindow() : Fast3dWindow(std::vector<std::shared_ptr<Ship::Gu
 
 Fast3dWindow::~Fast3dWindow() {
     SPDLOG_DEBUG("destruct fast3dwindow");
+    // Shut ImGui down while its GL context still exists. Interpreter::Destroy
+    // deletes the context and quits SDL, and ~Window runs after this body.
+    // The GL calls of a later shutdown crashed the Switch on quit.
+    if (GetGui() != nullptr) {
+        GetGui()->ShutDownImGui(this);
+    }
     mInterpreter->Destroy();
     delete mRenderingApi;
     delete mWindowManagerApi;

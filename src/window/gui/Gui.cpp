@@ -167,7 +167,10 @@ void Gui::Init(GuiWindowInitData windowImpl) {
         static_cast<uint32_t>(RESOURCE_TYPE_GUI_TEXTURE), 0);
 
     ImGuiWMInit();
-#ifdef __SWITCH__
+#ifdef __SWITCH2__
+    // 1.5x the Switch 1 scale: the Switch 2 draws the UI at 1080p, not 720p.
+    ImGui::GetStyle().ScaleAllSizes(3);
+#elif defined(__SWITCH__)
     ImGui::GetStyle().ScaleAllSizes(2);
 #endif
     mInterpreter = dynamic_pointer_cast<Fast::Fast3dWindow>(Context::GetInstance()->GetWindow())->GetInterpreterWeak();
@@ -202,6 +205,10 @@ void Gui::ImGuiWMInit() {
 }
 
 void Gui::ShutDownImGui(Ship::Window* window) {
+    if (ImGui::GetCurrentContext() == nullptr) {
+        // Already shut down (Fast3dWindow does it before closing GL).
+        return;
+    }
     switch (window->GetWindowBackend()) {
 #ifdef ENABLE_OPENGL
         case WindowBackend::FAST3D_SDL_OPENGL:
