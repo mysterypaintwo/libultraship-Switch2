@@ -27,6 +27,15 @@
 #include "fast/interpreter.h"
 #include "ship/config/ConsoleVariable.h"
 
+// Core-profile OpenGL: GLSL 4.10 core shaders and a bound vertex array object.
+// macOS needs it. Switch 2 uses it too: there OpenGL is Zink on Vulkan, which
+// does not run the legacy (GLSL 1.10/1.30, no VAO) path that Switch 1 uses.
+#if defined(__APPLE__) || defined(__SWITCH2__)
+#define GFX_OPENGL_CORE 1
+#else
+#define GFX_OPENGL_CORE 0
+#endif
+
 namespace Fast {
 int GfxRenderingAPIOGL::GetMaxTextureSize() {
     GLint max_texture_size;
@@ -280,7 +289,7 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "SHADER_NOISE", SHADER_NOISE },
         { "o_three_point_filtering", mCurrentFilterMode == FILTER_THREE_POINT },
         { "append_formula", (InvokeFunc)append_formula },
-#ifdef __APPLE__
+#if GFX_OPENGL_CORE
         { "GLSL_VERSION", "#version 410 core" },
         { "attr", "in" },
         { "opengles", false },
@@ -351,7 +360,7 @@ static std::string BuildVsShader(const CCFeatures& cc_features) {
                                      { "o_alpha", cc_features.opt_alpha },
                                      { "o_inputs", cc_features.numInputs },
                                      { "update_floats", (InvokeFunc)UpdateFloats },
-#ifdef __APPLE__
+#if GFX_OPENGL_CORE
                                      { "GLSL_VERSION", "#version 410 core" },
                                      { "attr", "in" },
                                      { "out", "out" },
@@ -715,7 +724,7 @@ void GfxRenderingAPIOGL::Init() {
     glGenBuffers(1, &mOpenglVbo);
     glBindBuffer(GL_ARRAY_BUFFER, mOpenglVbo);
 
-#if defined(__APPLE__) || defined(USE_OPENGLES)
+#if GFX_OPENGL_CORE || defined(USE_OPENGLES)
     glGenVertexArrays(1, &mOpenglVao);
     glBindVertexArray(mOpenglVao);
 #endif

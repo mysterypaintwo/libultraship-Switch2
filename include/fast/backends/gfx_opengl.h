@@ -126,9 +126,8 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     ShaderProgram* mLastLoadedShader = nullptr;
 
     GLuint mOpenglVbo = 0;
-#if defined(__APPLE__) || defined(USE_OPENGLES)
-    GLuint mOpenglVao;
-#endif
+    // Used with core-profile OpenGL (macOS, Switch 2) and OpenGL ES.
+    GLuint mOpenglVao = 0;
 
     uint32_t mFrameCount = 0;
 
