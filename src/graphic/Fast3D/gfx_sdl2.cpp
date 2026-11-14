@@ -270,6 +270,11 @@ static void set_fullscreen(bool on, bool call_callback) {
 }
 
 static void gfx_sdl_get_active_window_refresh_rate(uint32_t* refresh_rate) {
+#ifdef __SWITCH__
+    // SDL always reports 60 Hz here.
+    *refresh_rate = LUS::Switch::GetRefreshRate();
+    return;
+#endif
     int display_in_use = SDL_GetWindowDisplayIndex(wnd);
 
     SDL_DisplayMode mode;
@@ -411,6 +416,9 @@ static void gfx_sdl_init(const char* game_name, const char* gfx_api_name, bool s
 
         SDL_GL_MakeCurrent(wnd, ctx);
         SDL_GL_SetSwapInterval(vsync_enabled ? 1 : 0);
+#ifdef __SWITCH__
+        LUS::Switch::ApplyFrameRate(target_fps, true);
+#endif
 
         window_impl.Opengl = { wnd, ctx };
     } else {
@@ -473,7 +481,9 @@ static void gfx_sdl_set_keyboard_callbacks(bool (*on_key_down)(int scancode), bo
 
 static void gfx_sdl_main_loop(void (*run_one_game_iter)(void)) {
 #ifdef __SWITCH__
-    while (LUS::Switch::IsRunning()) {
+    // Window::Close (the Quit menu item) clears is_running, the HOME menu's
+    // close clears Switch::IsRunning.
+    while (is_running && LUS::Switch::IsRunning()) {
 #else
     while (is_running) {
 #endif
@@ -481,9 +491,27 @@ static void gfx_sdl_main_loop(void (*run_one_game_iter)(void)) {
     }
 #ifdef __SWITCH__
     LUS::Switch::Exit();
-#endif
-
+    // The game's audio thread still plays through SDL here, and the GUI still
+    // has GL objects. The game calls gfx_sdl_shutdown once those are gone.
+#else
     SDL_DestroyRenderer(renderer);
+    SDL_Quit();
+#endif
+}
+
+void gfx_sdl_shutdown(void) {
+    if (ctx != nullptr) {
+        SDL_GL_DeleteContext(ctx);
+        ctx = nullptr;
+    }
+    if (renderer != nullptr) {
+        SDL_DestroyRenderer(renderer);
+        renderer = nullptr;
+    }
+    if (wnd != nullptr) {
+        SDL_DestroyWindow(wnd);
+        wnd = nullptr;
+    }
     SDL_Quit();
 }
 
@@ -628,6 +656,9 @@ static double gfx_sdl_get_time(void) {
 
 static void gfx_sdl_set_target_fps(int fps) {
     target_fps = fps;
+#ifdef __SWITCH__
+    LUS::Switch::ApplyFrameRate(fps);
+#endif
 }
 
 static void gfx_sdl_set_maximum_frame_latency(int latency) {

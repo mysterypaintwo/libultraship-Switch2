@@ -380,8 +380,20 @@ void SDLController::CreateDefaultBinding(int32_t portIndex) {
     profile->Mappings[SDL_CONTROLLER_BUTTON_DPAD_DOWN] = BTN_DDOWN;
     profile->Mappings[SDL_CONTROLLER_BUTTON_DPAD_UP] = BTN_DUP;
     profile->Mappings[SDL_CONTROLLER_BUTTON_START] = BTN_START;
+#ifdef __SWITCH__
+    // SDL buttons are positional on Switch: SDL A/B/X/Y are the Switch
+    // B/A/Y/X buttons. B is A and Y is B, as on the N64 pad, and the item
+    // C buttons are on the other face buttons: A is C-down, X is C-left and
+    // R is C-right. The right stick also stays on the C buttons.
+    profile->Mappings[SDL_CONTROLLER_BUTTON_A] = BTN_A;
+    profile->Mappings[SDL_CONTROLLER_BUTTON_X] = BTN_B;
+    profile->Mappings[SDL_CONTROLLER_BUTTON_B] = BTN_CDOWN;
+    profile->Mappings[SDL_CONTROLLER_BUTTON_Y] = BTN_CLEFT;
+    profile->Mappings[SDL_CONTROLLER_BUTTON_RIGHTSHOULDER] = BTN_CRIGHT;
+#else
     profile->Mappings[SDL_CONTROLLER_BUTTON_B] = BTN_B;
     profile->Mappings[SDL_CONTROLLER_BUTTON_A] = BTN_A;
+#endif
     profile->Mappings[SDL_CONTROLLER_BUTTON_LEFTSTICK] = BTN_MODIFIER1;
     profile->Mappings[SDL_CONTROLLER_BUTTON_RIGHTSTICK] = BTN_MODIFIER2;
 

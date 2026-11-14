@@ -132,7 +132,10 @@ void Gui::Init(GuiWindowInitData windowImpl) {
 
     ImGuiWMInit();
     ImGuiBackendInit();
-#ifdef __SWITCH__
+#ifdef __SWITCH2__
+    // 1.5x the Switch 1 scale: the Switch 2 draws the UI at 1080p, not 720p.
+    ImGui::GetStyle().ScaleAllSizes(3);
+#elif defined(__SWITCH__)
     ImGui::GetStyle().ScaleAllSizes(2);
 #endif
 
