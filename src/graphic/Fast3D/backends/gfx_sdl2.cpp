@@ -1,5 +1,13 @@
 #include <stdio.h>
 
+#ifndef __SWITCH__
+#include "libultraship/libultraship.h"
+#else
+// including libultraship.h on switch leads to conflicting typedefs for u64 and s64
+// so we need to just include classes.h instead here
+#include "libultraship/classes.h"
+#endif
+
 #if defined(ENABLE_OPENGL) || defined(__APPLE__)
 
 #ifdef __MINGW32__
@@ -23,6 +31,11 @@
 #include <SDL.h>
 #include "gfx_metal.h"
 #include "utils/macUtils.h"
+#elif __SWITCH__
+#include <SDL2/SDL.h>
+#include <switch.h>
+#include <glad/glad.h>
+#include "port/switch/SwitchImpl.h"
 #else
 #include <SDL2/SDL.h>
 #define GL_GLEXT_PROTOTYPES 1
@@ -342,6 +355,10 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#elif defined(__SWITCH__)
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #endif
 
 #ifdef _WIN32
@@ -355,6 +372,11 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
     char title[512];
     int len = sprintf(title, "%s (%s)", gameName, gfxApiName);
+
+#ifdef __SWITCH__
+    // For Switch we need to set the window width before creating the window
+    Ship::Switch::GetDisplaySize(&mWindowWidth, &mWindowHeight);
+#endif
 
 #ifdef __IOS__
     Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN;
@@ -388,17 +410,23 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     }
 
     if (use_opengl) {
+#ifndef __SWITCH__
         SDL_GL_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
 
         if (startFullScreen) {
             SetFullscreenImpl(true, false);
         }
+#endif
 
         mCtx = SDL_GL_CreateContext(mWnd);
 
         SDL_GL_MakeCurrent(mWnd, mCtx);
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
-
+#ifdef __SWITCH__
+        if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
+            printf("Failed to initialize glad\n");
+        }
+#endif
         window_impl.Opengl = { mWnd, mCtx };
     } else {
         uint32_t flags = SDL_RENDERER_ACCELERATED;
@@ -576,7 +604,9 @@ void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
         case SDL_WINDOWEVENT:
             switch (event.window.event) {
                 case SDL_WINDOWEVENT_SIZE_CHANGED:
-#ifdef __APPLE__
+#ifdef __SWITCH__
+                    Ship::Switch::GetDisplaySize(&mWindowWidth, &mWindowHeight);
+#elif __APPLE__
                     SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
 #else
                     SDL_GL_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
@@ -715,6 +745,9 @@ bool GfxWindowBackendSDL2::IsRunning() {
 
 void GfxWindowBackendSDL2::Destroy() {
     // TODO: destroy _any_ resources used by SDL
+#ifdef __SWITCH__
+    Ship::Switch::Exit();
+#endif
     SDL_GL_DeleteContext(mCtx);
     SDL_DestroyWindow(mWnd);
     SDL_DestroyRenderer(mRenderer);

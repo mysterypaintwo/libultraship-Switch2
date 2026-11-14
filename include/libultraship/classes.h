@@ -11,7 +11,7 @@
 #include "debug/Console.h"
 #include "debug/CrashHandler.h"
 #include "config/ConsoleVariable.h"
-#include "config/Config.h"
+#include "config/ConfigVersion.h"
 #include "window/gui/ConsoleWindow.h"
 #include "window/gui/GameOverlay.h"
 #include "window/gui/Gui.h"
@@ -34,5 +34,8 @@
 #include "audio/SDLAudioPlayer.h"
 #ifdef __APPLE__
 #include "utils/AppleFolderManager.h"
+#endif
+#ifdef __SWITCH__
+#include "port/switch/SwitchImpl.h"
 #endif
 #endif

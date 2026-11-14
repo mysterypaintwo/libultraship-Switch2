@@ -74,7 +74,7 @@ file(GLOB Source_Files__Log RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "log/*.h" "log/
 
 source_group("log" FILES ${Source_Files__Log})
 
-target_sources(libultraship PRIVATE ${Source_Files__Log})
+target_sources(libultraship PRIVATE ${Source_Files__Log} ${Source_Files__Log__SPDLog})
 
 #=================== Window ===================
 
@@ -113,7 +113,13 @@ target_sources(libultraship PRIVATE ${Source_Files__Utils})
 
 #=================== Port ===================
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    set(Source_Files__Port
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchImpl.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchImpl.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchPerformanceProfiles.h
+    )
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(Source_Files__Port
         ${CMAKE_CURRENT_SOURCE_DIR}/port/mobile/MobileImpl.h
         ${CMAKE_CURRENT_SOURCE_DIR}/port/mobile/MobileImpl.cpp
@@ -166,12 +172,12 @@ target_sources(libultraship PRIVATE ${Source_Files__Graphic_Debug})
 
 target_include_directories(libultraship
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../extern ${CMAKE_CURRENT_BINARY_DIR} $<$<BOOL:${GFX_DEBUG_DISASSEMBLER}>:${CMAKE_CURRENT_SOURCE_DIR}/../../ZAPDTR/lib/libgfxd>
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_DIR} ${ADDITIONAL_LIB_INCLUDES}
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../extern/spdlog/include/ ${CMAKE_CURRENT_SOURCE_DIR} ${INCLUDE_DIR} ${ADDITIONAL_LIB_INCLUDES}
 )
 
 #=================== Linking ===================
 if(INCLUDE_MPQ_SUPPORT)
-    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
         target_link_libraries(libultraship PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,storm>")
     else()
         target_link_libraries(libultraship PUBLIC storm)
@@ -179,7 +185,7 @@ if(INCLUDE_MPQ_SUPPORT)
 endif()
 
 target_link_libraries(libultraship
-    PUBLIC ImGui
+    PUBLIC ImGui tinyxml2
 )
 
 target_link_libraries(libultraship PRIVATE stb)

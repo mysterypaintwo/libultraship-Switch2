@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#ifdef __SWITCH__
+#include <switch/types.h>
+#else
 typedef signed char s8;
 typedef unsigned char u8;
 typedef signed short int s16;
@@ -22,6 +25,7 @@ typedef volatile s16 vs16;
 typedef volatile s32 vs32;
 typedef volatile s64 vs64;
 
+#endif
 typedef float f32;
 typedef double f64;
 #if 0

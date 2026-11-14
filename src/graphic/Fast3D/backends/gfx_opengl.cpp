@@ -541,7 +541,7 @@ void GfxRenderingAPIOGL::UploadTexture(const uint8_t* rgba32_buf, uint32_t width
     textures[mCurrentTextureIds[mCurrentTile]].height = height;
 }
 
-#ifdef USE_OPENGLES
+#if defined(__SWITCH__) || defined(USE_OPENGLES)
 #define GL_MIRROR_CLAMP_TO_EDGE 0x8743
 #endif
 
@@ -652,7 +652,7 @@ void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size
 }
 
 void GfxRenderingAPIOGL::Init() {
-#ifndef __linux__
+#if !defined(__SWITCH__) && !defined(__linux__)
     glewInit();
 #endif
 

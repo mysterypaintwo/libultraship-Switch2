@@ -3,7 +3,9 @@ include(FetchContent)
 find_package(OpenGL QUIET)
 
 #=================== ImGui ===================
-set(imgui_fixes_and_config_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/imgui-fixes-and-config.patch)
+
+#set(imgui_switch_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/SWITCH-IMGUI.patch)
+set(imgui_fixes_and_config_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/combined.patch)
 set(imgui_apply_patch_command ${CMAKE_COMMAND} -Dpatch_file=${imgui_fixes_and_config_patch_file} -Dwith_reset=TRUE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
 
 FetchContent_Declare(
@@ -11,6 +13,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG v1.91.9b-docking
     PATCH_COMMAND ${imgui_apply_patch_command}
+#    PATCH_COMMAND ${imgui_apply_switchpatch_if_needed}
 )
 FetchContent_MakeAvailable(ImGui)
 list(APPEND ADDITIONAL_LIB_INCLUDES ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
@@ -27,11 +30,18 @@ target_sources(ImGui
     ${imgui_SOURCE_DIR}/imgui.cpp
 )
 
+if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    target_include_directories(ImGui PRIVATE ${DEVKITPRO}/portlibs/switch/include/)
+    target_include_directories(ImGui PRIVATE ${DEVKITPRO}/portlibs/switch/include/SDL2)
+endif()
+
 target_sources(ImGui
-    PRIVATE
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+        PRIVATE
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
 )
+
+
 
 target_include_directories(ImGui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends PRIVATE ${SDL2_INCLUDE_DIRS})
 
@@ -48,6 +58,10 @@ if(INCLUDE_MPQ_SUPPORT)
     )
     FetchContent_MakeAvailable(StormLib)
     list(APPEND ADDITIONAL_LIB_INCLUDES ${stormlib_SOURCE_DIR}/src)
+    #this was in lus switch version
+    if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+        target_compile_definitions(storm PRIVATE -D_POSIX_C_SOURCE=200809L)
+    endif()
 endif()
 
 #=================== STB ===================

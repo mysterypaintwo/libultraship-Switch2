@@ -1,7 +1,7 @@
 #include "Fast3dWindow.h"
 
 #include "Context.h"
-#include "config/Config.h"
+#include "config/ConfigVersion.h"
 #include "controller/controldeck/ControlDeck.h"
 #include "public/bridge/consolevariablebridge.h"
 #include "graphic/Fast3D/interpreter.h"
@@ -12,6 +12,10 @@
 #include "graphic/Fast3D/backends/gfx_direct3d_common.h"
 #include "graphic/Fast3D/backends/gfx_direct3d11.h"
 #include "backends/gfx_window_manager_api.h"
+
+#ifdef __SWITCH__
+#include "port/switch/SwitchImpl.h"
+#endif
 
 #include <fstream>
 
@@ -275,7 +279,7 @@ uint32_t Fast3dWindow::GetCurrentRefreshRate() {
 }
 
 bool Fast3dWindow::SupportsWindowedFullscreen() {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__SWITCH__)
     return false;
 #endif
 

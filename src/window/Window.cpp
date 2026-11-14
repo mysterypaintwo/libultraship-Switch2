@@ -9,6 +9,8 @@
 
 #ifdef __APPLE__
 #include "utils/AppleFolderManager.h"
+#elif defined(__SWITCH__)
+#include "port/switch/SwitchImpl.h"
 #endif
 
 namespace Ship {
