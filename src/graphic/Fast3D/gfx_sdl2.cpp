@@ -329,6 +329,11 @@ static void gfx_sdl_init(const char* game_name, const char* gfx_api_name, bool s
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#elif defined(__SWITCH2__)
+    // Switch 2: a 4.1 core context, as on macOS (see GFX_OPENGL_CORE in gfx_opengl.cpp).
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
 #elif defined(__SWITCH__)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
@@ -392,8 +397,15 @@ static void gfx_sdl_init(const char* game_name, const char* gfx_api_name, bool s
         ctx = SDL_GL_CreateContext(wnd);
 
 #ifdef __SWITCH__
+        if (ctx == nullptr) {
+            SPDLOG_ERROR("SDL_GL_CreateContext failed: {}", SDL_GetError());
+        }
         if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
             printf("Failed to initialize glad\n");
+            SPDLOG_ERROR("Failed to initialize glad");
+        } else {
+            SPDLOG_INFO("OpenGL {} ({}, {})", (const char*)glGetString(GL_VERSION),
+                        (const char*)glGetString(GL_RENDERER), (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION));
         }
 #endif
 

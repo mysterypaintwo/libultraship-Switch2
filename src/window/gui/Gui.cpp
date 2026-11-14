@@ -182,7 +182,7 @@ void Gui::ImGuiBackendInit() {
             break;
 #else
         case WindowBackend::SDL_OPENGL:
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__SWITCH2__)
             ImGui_ImplOpenGL3_Init("#version 410 core");
 #else
             ImGui_ImplOpenGL3_Init("#version 120");
