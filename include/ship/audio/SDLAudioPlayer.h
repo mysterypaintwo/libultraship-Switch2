@@ -14,6 +14,9 @@ namespace Ship {
  */
 class SDLAudioPlayer final : public AudioPlayer {
   public:
+    // Closes the audio device and opens it again with the same settings.
+    // Call it only from the thread that plays the audio.
+    void Reopen();
     /**
      * @brief Constructs an SDLAudioPlayer with the given audio settings.
      * @param settings Sample rate, buffer size, desired buffered frames, and channel mode.

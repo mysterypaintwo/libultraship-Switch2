@@ -1,5 +1,6 @@
 #ifdef __SWITCH__
 #include "SwitchImpl.h"
+#include <atomic>
 #include <switch.h>
 #include <SDL2/SDL.h>
 #include "SwitchPerformanceProfiles.h"
@@ -34,11 +35,25 @@ HidsysUniquePadId uniquePadIds[8];
 
 void DetectAppletMode();
 
+// Set when the app gets the focus back (for example after sleep). The audio
+// thread re-opens the SDL audio device on its next frame (audiobridge.cpp).
+static std::atomic<bool> sAudioReopenRequested = false;
+
+extern "C" bool LusSwitch_TakeAudioReopenRequest() {
+    return sAudioReopenRequested.exchange(false);
+}
+
 static void on_applet_hook(AppletHookType hook, void* param);
+
+namespace SwitchCrashReport {
+void Install();
+}
 
 void Ship::Switch::Init(SwitchPhase phase) {
     switch (phase) {
         case PreInitPhase:
+            // Write logs/crash-*.txt when the program crashes (SwitchCrashReport.cpp).
+            SwitchCrashReport::Install();
             DetectAppletMode();
             socketInitializeDefault();
 #ifdef DEBUG
@@ -252,7 +267,9 @@ static void on_applet_hook(AppletHookType hook, void* param) {
                 SPDLOG_INFO("restarting SDL audio system to work around audio problems on resume");
                 if (auto audio = Ship::Context::GetRawInstance()->GetAudio(); audio != nullptr) {
                     // the audio subsystem is not initialized during applet boot
-                    audio->SetCurrentAudioBackend(Ship::AudioBackend::SDL);
+                    // Only ask for it here: the audio thread may be using the player right
+                    // now. AudioPlayerPlayFrame re-opens the device on that thread.
+                    sAudioReopenRequested = true;
                 }
             }
 

@@ -59,4 +59,13 @@ void SDLAudioPlayer::DoPlay(const uint8_t* buf, size_t len) {
         SDL_QueueAudio(mDevice, buf, len);
     }
 }
+void SDLAudioPlayer::Reopen() {
+    SPDLOG_INFO("Re-opening the SDL audio device");
+    DoClose();
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    if (!DoInit()) {
+        mDevice = 0;
+    }
+}
+
 } // namespace Ship

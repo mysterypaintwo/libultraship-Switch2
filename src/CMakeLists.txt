@@ -72,6 +72,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     set(Source_Files__Port
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchImpl.h
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchImpl.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchCrashReport.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchPerformanceProfiles.h
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
