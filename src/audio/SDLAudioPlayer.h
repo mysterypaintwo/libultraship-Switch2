@@ -5,6 +5,9 @@
 namespace LUS {
 class SDLAudioPlayer : public AudioPlayer {
   public:
+    // Closes the audio device and opens it again with the same settings.
+    // Call it only from the thread that plays the audio.
+    void Reopen();
     SDLAudioPlayer();
     ~SDLAudioPlayer();
 

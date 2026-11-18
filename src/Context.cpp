@@ -142,8 +142,14 @@ void Context::InitLogging() {
         sinks.push_back(fileSink);
 #endif
 
+#ifdef __SWITCH__
+        // On Switch, write each line right away: an async logger loses the lines
+        // still queued when the app crashes, and those are the ones that matter.
+        mLogger = std::make_shared<spdlog::logger>(GetName(), sinks.begin(), sinks.end());
+#else
         mLogger = std::make_shared<spdlog::async_logger>(GetName(), sinks.begin(), sinks.end(), spdlog::thread_pool(),
                                                          spdlog::async_overflow_policy::block);
+#endif
 #ifdef _DEBUG
         GetLogger()->set_level(spdlog::level::trace);
 #else
@@ -152,6 +158,8 @@ void Context::InitLogging() {
 
 #if defined(_DEBUG)
         GetLogger()->flush_on(spdlog::level::trace);
+#elif defined(__SWITCH__)
+        GetLogger()->flush_on(spdlog::level::info);
 #endif
 
 #ifndef __WIIU__

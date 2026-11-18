@@ -1,5 +1,6 @@
 #ifdef __SWITCH__
 #include "SwitchImpl.h"
+#include <atomic>
 #include <switch.h>
 #include <SDL2/SDL.h>
 #include "SwitchPerformanceProfiles.h"
@@ -28,11 +29,25 @@ static bool isShowingVirtualKeyboard = true;
 
 void DetectAppletMode();
 
+// Set when the app gets the focus back (for example after sleep). The audio
+// thread re-opens the SDL audio device on its next frame (audiobridge.cpp).
+static std::atomic<bool> sAudioReopenRequested = false;
+
+extern "C" bool LusSwitch_TakeAudioReopenRequest() {
+    return sAudioReopenRequested.exchange(false);
+}
+
 static void on_applet_hook(AppletHookType hook, void* param);
+
+namespace SwitchCrashReport {
+void Install();
+}
 
 void LUS::Switch::Init(SwitchPhase phase) {
     switch (phase) {
         case PreInitPhase:
+            // Write logs/crash-*.txt when the program crashes (SwitchCrashReport.cpp).
+            SwitchCrashReport::Install();
             DetectAppletMode();
             break;
         case PostInitPhase:
@@ -241,7 +256,9 @@ static void on_applet_hook(AppletHookType hook, void* param) {
                 // reinitialize audio subsystem to fix audio problems after resuming from sleep
                 // see https://github.com/HarbourMasters/Shipwright/issues/3317
                 SPDLOG_INFO("restarting SDL audio system to work around audio problems on resume");
-                LUS::Context::GetInstance()->GetAudio()->SetAudioBackend(LUS::AudioBackend::SDL);
+                // Only ask for it here: the audio thread may be using the player right
+                // now. AudioPlayerPlayFrame re-opens the device on that thread.
+                sAudioReopenRequested = true;
             }
 
             break;
