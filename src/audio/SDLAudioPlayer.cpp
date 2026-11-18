@@ -40,4 +40,18 @@ void SDLAudioPlayer::Play(const uint8_t* buf, size_t len) {
         SDL_QueueAudio(mDevice, buf, len);
     }
 }
+void SDLAudioPlayer::Reopen() {
+    SPDLOG_INFO("Re-opening the SDL audio device");
+    if (mDevice != 0) {
+        SDL_PauseAudioDevice(mDevice, 1);
+        SDL_ClearQueuedAudio(mDevice);
+        SDL_CloseAudioDevice(mDevice);
+        mDevice = 0;
+    }
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    if (!DoInit()) {
+        mDevice = 0;
+    }
+}
+
 } // namespace Ship
