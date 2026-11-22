@@ -144,6 +144,11 @@ target_link_libraries(libultraship
     PUBLIC ImGui
 )
 
+if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # Bigger default thread stacks: see __wrap_pthread_create in SwitchImpl.cpp.
+    target_link_options(libultraship INTERFACE "-Wl,--wrap=pthread_create")
+endif()
+
 target_link_libraries(libultraship PRIVATE stb)
 
 if (GFX_DEBUG_DISASSEMBLER)

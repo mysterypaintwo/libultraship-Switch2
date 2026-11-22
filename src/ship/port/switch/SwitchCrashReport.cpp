@@ -33,6 +33,21 @@ extern "C" {
 extern char __start__[];
 extern char __rodata_start[];
 
+// The program's threads name themselves with LusSwitch_SetThreadName, so the
+// report says which one crashed (main, audio, ...).
+static thread_local const char* tThreadName = nullptr;
+static const char* sBuildInfo = "";
+
+void LusSwitch_SetThreadName(const char* name) {
+    tThreadName = name;
+}
+
+// Build version and commit, written at the top of each report. The string must
+// stay valid for the whole run.
+void LusSwitch_SetBuildInfo(const char* info) {
+    sBuildInfo = info != nullptr ? info : "";
+}
+
 // The handler runs on this stack (libnx's default is only 1 KiB).
 alignas(16) u8 __nx_exception_stack[0x8000];
 u64 __nx_exception_stack_size = sizeof(__nx_exception_stack);
@@ -109,6 +124,12 @@ void AppendHeader(const char* what) {
     char stamp[32];
     strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S", &tmNow);
     Append("Crash report, %s\n%s\n", stamp, what);
+    u64 threadId = 0;
+    svcGetThreadId(&threadId, CUR_THREAD_HANDLE);
+    Append("thread: %s (id %lu)\n", tThreadName != nullptr ? tThreadName : "unnamed", threadId);
+    if (sBuildInfo[0] != '\0') {
+        Append("build: %s\n", sBuildInfo);
+    }
     Append("image 0x%lx (offsets below are from here; look them up in the .elf)\n\n", ImageStart());
 }
 
@@ -213,6 +234,7 @@ namespace SwitchCrashReport {
 // Installs the terminate and abort handlers. The CPU exception handler is
 // always on.
 void Install() {
+    LusSwitch_SetThreadName("main");
     std::set_terminate(OnTerminate);
     signal(SIGABRT, OnAbortSignal);
 }

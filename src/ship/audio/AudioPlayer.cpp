@@ -13,8 +13,17 @@ bool AudioPlayer::Init() {
         SPDLOG_INFO("Initializing sound matrix decoder for surround");
         mSoundMatrixDecoder = std::make_unique<SoundMatrixDecoder>(mAudioSettings.SampleRate);
     }
+    std::lock_guard<std::recursive_mutex> lock(mDeviceMutex);
     mInitialized = DoInit();
     return IsInitialized();
+}
+
+void AudioPlayer::Close() {
+    std::lock_guard<std::recursive_mutex> lock(mDeviceMutex);
+    if (mInitialized) {
+        DoClose();
+        mInitialized = false;
+    }
 }
 
 bool AudioPlayer::IsInitialized() {
@@ -50,6 +59,7 @@ void AudioPlayer::SetDesiredBuffered(int32_t size) {
 }
 
 bool AudioPlayer::SetAudioChannels(AudioChannelsSetting channels) {
+    std::lock_guard<std::recursive_mutex> lock(mDeviceMutex);
     if (mAudioSettings.ChannelSetting == channels) {
         return true; // No change needed
     }
@@ -73,7 +83,8 @@ bool AudioPlayer::SetAudioChannels(AudioChannelsSetting channels) {
         mSoundMatrixDecoder.reset();
     }
 
-    return DoInit();
+    mInitialized = DoInit();
+    return mInitialized;
 }
 
 int32_t AudioPlayer::GetNumOutputChannels() const {
@@ -88,6 +99,10 @@ int32_t AudioPlayer::GetNumOutputChannels() const {
 }
 
 void AudioPlayer::Play(const uint8_t* buf, size_t len) {
+    std::lock_guard<std::recursive_mutex> lock(mDeviceMutex);
+    if (!mInitialized) {
+        return;
+    }
     if (mAudioSettings.ChannelSetting != AudioChannelsSetting::audioMatrix51) {
         // Stereo or Raw 5.1 passthrough
         DoPlay(buf, len);

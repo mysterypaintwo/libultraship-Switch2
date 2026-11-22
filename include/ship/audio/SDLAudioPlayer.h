@@ -14,9 +14,6 @@ namespace Ship {
  */
 class SDLAudioPlayer final : public AudioPlayer {
   public:
-    // Closes the audio device and opens it again with the same settings.
-    // Call it only from the thread that plays the audio.
-    void Reopen();
     /**
      * @brief Constructs an SDLAudioPlayer with the given audio settings.
      * @param settings Sample rate, buffer size, desired buffered frames, and channel mode.
@@ -54,5 +51,13 @@ class SDLAudioPlayer final : public AudioPlayer {
   private:
     SDL_AudioDeviceID mDevice = 0; ///< Handle to the opened SDL audio device.
     int32_t mNumChannels = 2;      ///< Number of output channels (2 for stereo, 6 for 5.1).
+#ifdef __SWITCH__
+    // Stall watchdog (see DoPlay): the queue size after the last play, and when
+    // the device last took samples from the queue.
+    uint32_t mQueuedAfterLastPlay = 0;
+    uint32_t mLastDrainTicks = 0;
+    uint32_t mLastReopenTicks = 0;
+    bool ReopenIfStalled();
+#endif
 };
 } // namespace Ship

@@ -38,3 +38,10 @@ class Switch {
     static char* GetControllerUUID(int controller);
 };
 }; // namespace Ship
+
+// Crash reports (SwitchCrashReport.cpp). A thread calls LusSwitch_SetThreadName
+// at its start so that a crash report says which thread crashed. The build
+// info (version, commit) goes at the top of each report. Both strings must
+// stay valid for the whole run.
+extern "C" void LusSwitch_SetThreadName(const char* name);
+extern "C" void LusSwitch_SetBuildInfo(const char* info);

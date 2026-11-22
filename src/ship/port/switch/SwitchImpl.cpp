@@ -1,6 +1,7 @@
 #ifdef __SWITCH__
 #include "SwitchImpl.h"
 #include <atomic>
+#include <pthread.h>
 #include <switch.h>
 #include <SDL2/SDL.h>
 #include "SwitchPerformanceProfiles.h"
@@ -25,8 +26,12 @@
 
 static AppletHookCookie applet_hook_cookie;
 static bool isRunning = true;
-static bool hasFocus = true;
+// Written by the applet hook, read by the audio thread (SDLAudioPlayer.cpp).
+static std::atomic<bool> hasFocus = true;
 static bool isShowingVirtualKeyboard = false;
+
+// pl (shared system fonts) stays open while ImGui can read the fonts.
+static bool sPlInitialized = false;
 
 static SwkbdConfig keyboard;
 static char kbBuffer[256] = { 0 };
@@ -35,12 +40,37 @@ HidsysUniquePadId uniquePadIds[8];
 
 void DetectAppletMode();
 
-// Set when the app gets the focus back (for example after sleep). The audio
-// thread re-opens the SDL audio device on its next frame (audiobridge.cpp).
-static std::atomic<bool> sAudioReopenRequested = false;
+// Thread stacks. libnx/libounce give a thread 128 KiB of stack when the
+// program does not ask for a size, and std::thread never asks. Desktop threads
+// get 512 KiB (macOS) to 8 MiB (Linux), and the game's audio thread, the
+// resource loader and the decoders were written for that. A thread that runs
+// past its stack here writes over other memory without faulting, and the
+// program crashes later somewhere else. The link wraps pthread_create
+// (-Wl,--wrap=pthread_create, src/CMakeLists.txt) to give such threads 1 MiB.
+extern "C" int __real_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg);
 
-extern "C" bool LusSwitch_TakeAudioReopenRequest() {
-    return sAudioReopenRequested.exchange(false);
+extern "C" int __wrap_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg) {
+    constexpr size_t kDefaultStackSize = 1024 * 1024;
+    size_t stackSize = 0;
+    if (attr != nullptr && (pthread_attr_getstacksize(attr, &stackSize) != 0 || stackSize != 0)) {
+        return __real_pthread_create(thread, attr, start, arg);
+    }
+    pthread_attr_t sized;
+    if (attr != nullptr) {
+        sized = *attr;
+    } else {
+        pthread_attr_init(&sized);
+    }
+    pthread_attr_setstacksize(&sized, kDefaultStackSize);
+    int result = __real_pthread_create(thread, &sized, start, arg);
+    if (attr == nullptr) {
+        pthread_attr_destroy(&sized);
+    }
+    return result;
+}
+
+extern "C" bool LusSwitch_HasFocus() {
+    return hasFocus;
 }
 
 static void on_applet_hook(AppletHookType hook, void* param);
@@ -79,6 +109,10 @@ void Ship::Switch::Init(SwitchPhase phase) {
 }
 
 void Ship::Switch::Exit() {
+    if (sPlInitialized) {
+        plExit();
+        sPlInitialized = false;
+    }
     socketExit();
 #ifndef __SWITCH2__
     clkrstExit();
@@ -87,7 +121,9 @@ void Ship::Switch::Exit() {
 }
 
 void Ship::Switch::ImGuiSetupFont(ImFontAtlas* fonts) {
-    plInitialize(PlServiceType_User);
+    if (!sPlInitialized) {
+        plInitialize(PlServiceType_User);
+    }
     static PlFontData stdFontData, extFontData;
 
     PlFontData fonts_std;
@@ -111,7 +147,11 @@ void Ship::Switch::ImGuiSetupFont(ImFontAtlas* fonts) {
     fonts->AddFontFromMemoryTTF(fonts_ext.address, fonts_ext.size, SWITCH_FONT_SIZE, &config, ranges);
     fonts->Build();
 
-    plExit();
+    // No plExit() here: the atlas keeps pointers into the shared font memory
+    // (FontDataOwnedByAtlas = false), and plExit() unmaps it. The atlas is
+    // built again whenever a font is added later (the port adds its own fonts
+    // after this), and that read the unmapped memory. Exit() closes pl.
+    sPlInitialized = true;
 }
 
 void Ship::Switch::CreateKeyboard() {
@@ -128,6 +168,11 @@ void Ship::Switch::ImGuiProcessEvent(bool wantsTextInput) {
     ImGuiIO& io = ImGui::GetIO();
     if (wantsTextInput) {
         if (!isShowingVirtualKeyboard) {
+            // WantTextInput comes from the last frame: the widget that wanted
+            // text may be gone, and then there is no state.
+            if (state == nullptr) {
+                return;
+            }
             state->ClearText();
             isShowingVirtualKeyboard = true;
             memset(kbBuffer, 0, sizeof(kbBuffer));
@@ -262,15 +307,10 @@ static void on_applet_hook(AppletHookType hook, void* param) {
 #endif
             } else {
                 Ship::Switch::ApplyOverclock();
-                // reinitialize audio subsystem to fix audio problems after resuming from sleep
-                // see https://github.com/HarbourMasters/Shipwright/issues/3317
-                SPDLOG_INFO("restarting SDL audio system to work around audio problems on resume");
-                if (auto audio = Ship::Context::GetRawInstance()->GetAudio(); audio != nullptr) {
-                    // the audio subsystem is not initialized during applet boot
-                    // Only ask for it here: the audio thread may be using the player right
-                    // now. AudioPlayerPlayFrame re-opens the device on that thread.
-                    sAudioReopenRequested = true;
-                }
+                // Audio that stopped after sleep (Shipwright issue #3317) is
+                // fixed by SDLAudioPlayer's stall watchdog, which re-opens the
+                // device only if it really stopped. Re-opening it at every
+                // focus change (at boot too) crashed on Switch 2.
             }
 
             break;
@@ -319,7 +359,7 @@ const char* RandomTexts[] = {
     "They say that Kenix is not a developer",
     "Squadala we're off",
     "They say one once saw an equals not get set equals",
-    "This is the port all true gamers dock at"
+    "This is the port all true gamers dock at",
     "Enhancements? Times Savers? Cheats? You want them? They're yours my friend!",
     "They say you gotta have the BIIIIG salad",
     "They say Louis stopped working on the imports so he can focus on the exports",
@@ -335,7 +375,7 @@ void DetectAppletMode() {
                                   "Please relaunch while in full-memory mode.\n"
                                   "Hold R when opening any game to enter HBMenu.\n\n"
                                   "%s.",
-                                  RandomTexts[rand() % 25]);
+                                  RandomTexts[rand() % (sizeof(RandomTexts) / sizeof(RandomTexts[0]))]);
     exit(1);
 }
 
@@ -343,7 +383,7 @@ void Ship::Switch::ThrowMissingOTR(std::string otrPath) {
     Ship::Switch::ShowErrorApplet("You've launched the Ship without an OTR/O2R file.\n"
                                         "Please relaunch making sure %s exists.\n\n"
                                         "%s.",
-                                        otrPath.c_str(), RandomTexts[rand() % 25]);
+                                        otrPath.c_str(), RandomTexts[rand() % (sizeof(RandomTexts) / sizeof(RandomTexts[0]))]);
     exit(2);
 }
 #endif
