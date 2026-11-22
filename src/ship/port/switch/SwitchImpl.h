@@ -45,3 +45,8 @@ class Switch {
 // stay valid for the whole run.
 extern "C" void LusSwitch_SetThreadName(const char* name);
 extern "C" void LusSwitch_SetBuildInfo(const char* info);
+// Says the program was asked to quit, and why (logged; no crash report for
+// the exit() that follows).
+extern "C" void LusSwitch_NoteQuit(const char* reason);
+// Makes CPU faults reach the crash report even if a debugger is reported.
+extern "C" void LusSwitch_EnableFaultReports(void);

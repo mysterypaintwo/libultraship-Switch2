@@ -4,8 +4,12 @@
 // This file writes logs/crash-<time>.txt (next to the other logs) when:
 // - the CPU faults (data abort, bad PC, ...): libnx calls
 //   __libnx_exception_handler with the registers;
-// - C++ ends the program: an exception nobody caught (std::terminate) or
-//   abort() (SIGABRT), for example from a failed assert.
+// - C++ ends the program: an exception nobody caught (std::terminate);
+// - abort() (SIGABRT, or __syscall_abort for libsysbase's abort) or a failed
+//   assert() (with its message), in our code or in a library (GPU driver,
+//   SDL, ...);
+// - exit() is called while nobody asked the program to quit (exit is wrapped
+//   with -Wl,--wrap=exit, src/CMakeLists.txt).
 //
 // Addresses are written as offsets into the program image (PC - __start__), so
 // they can be looked up in the build's .elf:
@@ -30,13 +34,27 @@
 
 extern "C" {
 // Set by the linker script: the start of the program image and the end of its code.
-extern char __start__[];
+// __start__ is an absolute 0 in the linker script, not the load address, so
+// use _start, the first instruction of the image.
+extern char _start[] __attribute__((visibility("hidden")));
 extern char __rodata_start[];
 
 // The program's threads name themselves with LusSwitch_SetThreadName, so the
 // report says which one crashed (main, audio, ...).
 static thread_local const char* tThreadName = nullptr;
 static const char* sBuildInfo = "";
+
+// Set when the program was asked to quit (quit button, HOME menu close, ...),
+// so that the exit() that follows does not write a report.
+static volatile bool sQuitRequested = false;
+static const char* sQuitReason = nullptr;
+
+void LusSwitch_NoteQuit(const char* reason) {
+    if (!sQuitRequested) {
+        sQuitReason = reason;
+    }
+    sQuitRequested = true;
+}
 
 void LusSwitch_SetThreadName(const char* name) {
     tThreadName = name;
@@ -51,6 +69,10 @@ void LusSwitch_SetBuildInfo(const char* info) {
 // The handler runs on this stack (libnx's default is only 1 KiB).
 alignas(16) u8 __nx_exception_stack[0x8000];
 u64 __nx_exception_stack_size = sizeof(__nx_exception_stack);
+// libnx drops an exception when the process reports a debugger, unless this is
+// set. Forcing it on from boot stopped the game launching in one test build
+// (not proven the cause), so only the test button turns it on for now.
+extern u32 __nx_exception_ignoredebug;
 }
 
 namespace {
@@ -76,7 +98,7 @@ void Append(const char* fmt, ...) {
 }
 
 uintptr_t ImageStart() {
-    return reinterpret_cast<uintptr_t>(__start__);
+    return reinterpret_cast<uintptr_t>(_start);
 }
 
 bool IsCode(uintptr_t address) {
@@ -211,6 +233,50 @@ void OnAbortSignal(int) {
 }
 
 } // namespace
+
+extern "C" {
+// abort() calls this (newlib/libsysbase), and so does a failed assert().
+// libsysbase's abort() calls this. Only a weak reference points here, so it is
+// marked used, or link time optimization drops it (src/CMakeLists.txt also
+// adds -u). newlib's abort() raises SIGABRT instead: OnAbortSignal.
+[[noreturn]] __attribute__((used)) void __syscall_abort(void) {
+    ReportAndExit("abort(): a library or the game gave up (see the log and the stack below)");
+}
+
+// A failed assert(). newlib's __assert_func prints the message to stderr (lost
+// on the console) and calls abort(), so it is wrapped (-Wl,--wrap=__assert_func)
+// to put the message in the report.
+[[noreturn]] void __wrap___assert_func(const char* file, int line, const char* func, const char* expr) {
+    char what[512];
+    snprintf(what, sizeof(what), "assert failed: %s\n  at %s:%d (%s)", expr != nullptr ? expr : "?",
+             file != nullptr ? file : "?", line, func != nullptr ? func : "?");
+    ReportAndExit(what);
+}
+
+[[noreturn]] void __real_exit(int code);
+
+// exit() while the program was not asked to quit: write where it came from.
+[[noreturn]] void __wrap_exit(int code) {
+    if (!sQuitRequested || code != 0) {
+        char what[160];
+        snprintf(what, sizeof(what), "exit(%d) called%s%s", code,
+                 sQuitRequested ? " after a quit request: " : " but nobody asked the program to quit",
+                 sQuitRequested && sQuitReason != nullptr ? sQuitReason : "");
+        AppendHeader(what);
+        AppendAddress("lr", reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
+        AppendStackScan(reinterpret_cast<uintptr_t>(__builtin_frame_address(0)));
+        WriteReport();
+    }
+    __real_exit(code);
+}
+}
+
+extern "C" void LusSwitch_EnableFaultReports(void) {
+    u64 debugged = 0;
+    Result rc = svcGetInfo(&debugged, InfoType_DebuggerAttached, INVALID_HANDLE, 0);
+    Append("debugger attached: %lu (svcGetInfo 0x%x)\n", debugged, rc);
+    __nx_exception_ignoredebug = 1;
+}
 
 extern "C" void __libnx_exception_handler(ThreadExceptionDump* ctx) {
     char what[96];

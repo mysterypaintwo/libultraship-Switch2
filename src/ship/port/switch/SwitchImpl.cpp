@@ -190,6 +190,8 @@ bool Ship::Switch::IsRunning() {
 }
 
 void Ship::Switch::Quit() {
+    SPDLOG_INFO("Quit requested by the program");
+    LusSwitch_NoteQuit("Ship::Switch::Quit");
     isRunning = false;
 }
 
@@ -286,6 +288,8 @@ static void on_applet_hook(AppletHookType hook, void* param) {
     /* Exit request */
     switch (hook) {
         case AppletHookType_OnExitRequest:
+            SPDLOG_INFO("The system asked the program to quit (HOME menu close or power off)");
+            LusSwitch_NoteQuit("system exit request");
             isRunning = false;
             break;
 
@@ -293,6 +297,7 @@ static void on_applet_hook(AppletHookType hook, void* param) {
         case AppletHookType_OnFocusState:
             focus_state = appletGetFocusState();
             hasFocus = focus_state == AppletFocusState_InFocus;
+            SPDLOG_INFO("Focus state: {}", (int)focus_state);
 
             if (!hasFocus) {
 #ifndef __SWITCH2__

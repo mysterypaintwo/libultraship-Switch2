@@ -12,8 +12,9 @@
 #endif
 
 #ifdef __SWITCH__
-// Start and end of the program image, from the libnx linker script.
-extern "C" char __start__[];
+// Start and end of the program image. Not __start__: the linker script makes it
+// an absolute 0, which would accept every unresolved segment address.
+extern "C" char _start[] __attribute__((visibility("hidden")));
 extern "C" char __end__[];
 #endif
 
@@ -3984,7 +3985,7 @@ static bool IsValidResolvedAddress(uintptr_t addr) {
                               reinterpret_cast<LPCSTR>(addr), &module) != 0;
 #elif defined(__SWITCH__)
     // The Switch has one static image and no dynamic loader.
-    return addr >= reinterpret_cast<uintptr_t>(__start__) && addr < reinterpret_cast<uintptr_t>(__end__);
+    return addr >= reinterpret_cast<uintptr_t>(_start) && addr < reinterpret_cast<uintptr_t>(__end__);
 #else
     // For non-Windows platforms, check whether the address belongs to a loaded object.
     Dl_info info;
@@ -4027,6 +4028,13 @@ bool gfx_set_timg_handler_rdp(F3DGfx** cmd0) {
     }
 
     if (!IsValidResolvedAddress(i)) {
+#ifdef __SWITCH__
+        static int sRejected = 0;
+        if (sRejected < 20) {
+            sRejected++;
+            SPDLOG_WARN("Texture address rejected: 0x{:x} (command 0x{:x})", i, (uintptr_t)cmd->words.w1);
+        }
+#endif
         return false;
     }
 

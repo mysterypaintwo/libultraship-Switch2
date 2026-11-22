@@ -73,6 +73,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchImpl.h
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchImpl.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchCrashReport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/Switch2Debug.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchPerformanceProfiles.h
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -146,7 +147,10 @@ target_link_libraries(libultraship
 
 if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     # Bigger default thread stacks: see __wrap_pthread_create in SwitchImpl.cpp.
-    target_link_options(libultraship INTERFACE "-Wl,--wrap=pthread_create")
+    # Crash reports for unexpected exit() calls and failed asserts: see
+    # __wrap_exit and __wrap___assert_func in SwitchCrashReport.cpp.
+    target_link_options(libultraship INTERFACE "-Wl,--wrap=pthread_create" "-Wl,--wrap=exit"
+        "-Wl,--wrap=__assert_func" "-Wl,-u,__syscall_abort")
 endif()
 
 target_link_libraries(libultraship PRIVATE stb)

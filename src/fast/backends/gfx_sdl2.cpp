@@ -300,6 +300,10 @@ static HANDLE mTimer;
 #define FRAME_INTERVAL_US_DENOMINATOR (mTargetFps)
 
 void GfxWindowBackendSDL2::Close() {
+#ifdef __SWITCH__
+    SPDLOG_INFO("Window closed: the program quits");
+    LusSwitch_NoteQuit("window closed");
+#endif
     mIsRunning = false;
 }
 
@@ -698,6 +702,10 @@ void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
             Ship::Context::GetRawInstance()->GetFileDropMgr()->SetDroppedFile(event.drop.file);
             break;
         case SDL_QUIT:
+#ifdef __SWITCH__
+            // SDL sends it when appletMainLoop() says the app must close.
+            SPDLOG_INFO("SDL_QUIT received");
+#endif
             Close();
             break;
     }
