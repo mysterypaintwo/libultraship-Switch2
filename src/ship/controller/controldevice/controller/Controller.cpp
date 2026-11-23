@@ -77,6 +77,9 @@ void Controller::ClearAllMappings() {
     GetLeftStick()->ClearAllMappings();
     GetRightStick()->ClearAllMappings();
     GetGyro()->ClearGyroMapping();
+#ifdef __SWITCH__
+    GetGyro()->EnsureDefaultMapping(); // The console's motion sensors are always available.
+#endif
     GetRumble()->ClearAllMappings();
     GetLED()->ClearAllMappings();
 }
@@ -91,6 +94,9 @@ void Controller::ClearAllMappingsForDeviceType(PhysicalDeviceType physicalDevice
     auto gyroMapping = GetGyro()->GetGyroMapping();
     if (gyroMapping != nullptr && gyroMapping->GetPhysicalDeviceType() == physicalDeviceType) {
         GetGyro()->ClearGyroMapping();
+#ifdef __SWITCH__
+        GetGyro()->EnsureDefaultMapping();
+#endif
     }
 
     GetRumble()->ClearAllMappingsForDeviceType(physicalDeviceType);

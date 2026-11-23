@@ -76,7 +76,7 @@ void ControllerGyro::ClearGyroMapping() {
 
 #ifdef __SWITCH__
 void ControllerGyro::EnsureDefaultMapping() {
-    if (mGyroMapping == nullptr) {
+    if (mGyroMapping == nullptr || mGyroMapping->GetSensitivityPercent() == 0) {
         mGyroMapping = std::make_shared<SDLGyroMapping>(mPortIndex, 1.0f, 0.0f, 0.0f, 0.0f);
     }
 }
