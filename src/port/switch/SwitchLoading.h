@@ -12,6 +12,9 @@ void SwitchLoading_Stage(const char* label, float start, float end);
 // Reports progress in the current step and animates the screen.
 void SwitchLoading_Update(int done, int total);
 void SwitchLoading_Finish(void);
+// Shows label instead of progress and waits for the A button. label must be a
+// string literal.
+void SwitchLoading_ShowErrorAndWait(const char* label);
 #ifdef __cplusplus
 }
 #endif
@@ -19,4 +22,5 @@ void SwitchLoading_Finish(void);
 #define SwitchLoading_Stage(label, start, end)
 #define SwitchLoading_Update(done, total)
 #define SwitchLoading_Finish()
+#define SwitchLoading_ShowErrorAndWait(label)
 #endif

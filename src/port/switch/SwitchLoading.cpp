@@ -4,6 +4,7 @@
 #include "SwitchLoadingFont.h"
 
 #include <SDL2/SDL.h>
+#include <switch.h>
 #include <glad/glad.h>
 
 #include <algorithm>
@@ -58,6 +59,7 @@ float sTarget = 0.0f;
 float sShown = 0.0f;
 bool sFinished = false;
 bool sGlFailed = false;
+bool sShowingError = false;
 uint32_t sLastDraw = 0;
 uint32_t sLongestGap = 0;
 uint32_t sFrames = 0;
@@ -203,6 +205,9 @@ void BuildScreen(int width, int height, uint32_t now) {
     Rect(barX, barY, std::round(barW * sShown), barH, kFill);
 
     float x = Text(sLabel, barX, baseline, textScale, kLabel);
+    if (sShowingError) {
+        return;
+    }
     // The dots show it is working. The bar only ever shows real progress.
     const float phase = (now % 1200) / 1200.0f * 3.0f;
     for (int i = 0; i < 3; i++) {
@@ -334,6 +339,24 @@ extern "C" void SwitchLoading_Stage(const char* label, float start, float end) {
     sStart = start;
     sEnd = end;
     SwitchLoading_Update(0, 1);
+}
+
+extern "C" void SwitchLoading_ShowErrorAndWait(const char* label) {
+    if (sFinished || glad_glClear == nullptr || SDL_GL_GetCurrentContext() == nullptr) {
+        return;
+    }
+    sLabel = label;
+    sShowingError = true;
+    padConfigureInput(8, HidNpadStyleSet_NpadStandard);
+    PadState pad;
+    padInitializeDefault(&pad);
+    while (appletMainLoop()) {
+        padUpdate(&pad);
+        if (padGetButtonsDown(&pad) & HidNpadButton_A) {
+            break;
+        }
+        Draw(SDL_GetTicks());
+    }
 }
 
 extern "C" void SwitchLoading_Finish(void) {
