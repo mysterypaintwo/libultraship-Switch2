@@ -353,6 +353,14 @@ void Gui::EndDraw() {
     DrawFloatingWindows();
     // Check if the CVars need to be saved, and do it if so.
     CheckSaveCvars();
+#ifdef __SWITCH__
+    static uint32_t sLastConfigFlush = 0;
+    const uint32_t now = SDL_GetTicks();
+    if (now - sLastConfigFlush >= 1000) {
+        sLastConfigFlush = now;
+        Context::GetRawInstance()->GetConfig()->FlushPendingSave();
+    }
+#endif
 }
 
 void Gui::ImGuiRenderDrawData(ImDrawData* data) {

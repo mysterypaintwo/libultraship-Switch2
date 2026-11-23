@@ -62,6 +62,7 @@ Context::~Context() {
     mKeystore = nullptr;
 #endif
     GetConfig()->Save();
+    GetConfig()->FlushPendingSave();
     mConfig = nullptr;
     mLogger->flush();
     mLogger = nullptr;

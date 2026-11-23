@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <vector>
 #include <string>
 #include <nlohmann/json.hpp>
@@ -169,6 +171,9 @@ class Config {
     /** @brief Flushes in-memory values to the config file on disk. */
     void Save();
 
+    /** @brief Writes changes from Save() now, if any are waiting. */
+    void FlushPendingSave();
+
     /**
      * @brief Returns the full config as a nested JSON object.
      *
@@ -226,6 +231,8 @@ class Config {
     template <typename T> std::vector<T> GetArray(const std::string& key);
 
   private:
+    void WriteToDisk();
+    std::atomic<bool> mSavePending = false;
     nlohmann::json mFlattenedJson;
     nlohmann::json mNestedJson;
     std::string mPath;

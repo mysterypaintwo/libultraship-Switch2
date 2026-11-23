@@ -13,6 +13,38 @@ SDLButtonToAnyMapping::~SDLButtonToAnyMapping() {
 }
 
 std::string SDLButtonToAnyMapping::GetPhysicalInputName() {
+#ifdef __SWITCH__
+    // SDL's names are positional (Xbox layout): SDL A is the bottom button, which
+    // is B on a Nintendo controller. Show what is printed on the controller.
+    switch (mControllerButton) {
+        case SDL_CONTROLLER_BUTTON_A:
+            return "B";
+        case SDL_CONTROLLER_BUTTON_B:
+            return "A";
+        case SDL_CONTROLLER_BUTTON_X:
+            return "Y";
+        case SDL_CONTROLLER_BUTTON_Y:
+            return "X";
+        case SDL_CONTROLLER_BUTTON_BACK:
+            return "-";
+        case SDL_CONTROLLER_BUTTON_GUIDE:
+            return "Home";
+        case SDL_CONTROLLER_BUTTON_START:
+            return "+";
+        case SDL_CONTROLLER_BUTTON_LEFTSTICK:
+            return "L Stick";
+        case SDL_CONTROLLER_BUTTON_RIGHTSTICK:
+            return "R Stick";
+        case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+            return "L";
+        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+            return "R";
+        case SDL_CONTROLLER_BUTTON_MISC1:
+            return "Capture";
+        default:
+            break;
+    }
+#endif
     switch (mControllerButton) {
         case SDL_CONTROLLER_BUTTON_A:
             return "A";
