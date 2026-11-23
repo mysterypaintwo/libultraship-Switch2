@@ -1,0 +1,38 @@
+diff --git a/imgui_widgets.cpp b/imgui_widgets.cpp
+index 45428e7c1..9afad9ef9 100644
+--- a/imgui_widgets.cpp
++++ b/imgui_widgets.cpp
+@@ -847,7 +847,13 @@ bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos)
+ 
+     // Tweak 1: Shrink hit-testing area if button covers an abnormally large proportion of the visible region. That's in order to facilitate moving the window away. (#3825)
+     // This may better be applied as a general hit-rect reduction mechanism for all widgets to ensure the area to move window is always accessible?
+-    const ImRect bb(pos, pos + ImVec2(g.FontSize, g.FontSize));
++    ImRect bb(pos, pos + ImVec2(g.FontSize, g.FontSize));
++#ifdef __SWITCH2__
++    // A window's close button fills the title bar's height, so it is easy to touch.
++    const bool is_window_close = id == window->GetID("#CLOSE");
++    if (is_window_close)
++        bb.Expand(g.Style.FramePadding.y);
++#endif
+     ImRect bb_interact = bb;
+     const float area_to_visible_ratio = window->OuterRectClipped.GetArea() / bb.GetArea();
+     if (area_to_visible_ratio < 1.5f)
+@@ -870,8 +876,16 @@ bool ImGui::CloseButton(ImGuiID id, const ImVec2& pos)
+     ImU32 cross_col = GetColorU32(ImGuiCol_Text);
+     ImVec2 cross_center = bb.GetCenter() - ImVec2(0.5f, 0.5f);
+     float cross_extent = g.FontSize * 0.5f * 0.7071f - 1.0f;
+-    window->DrawList->AddLine(cross_center + ImVec2(+cross_extent, +cross_extent), cross_center + ImVec2(-cross_extent, -cross_extent), cross_col, 1.0f);
+-    window->DrawList->AddLine(cross_center + ImVec2(+cross_extent, -cross_extent), cross_center + ImVec2(-cross_extent, +cross_extent), cross_col, 1.0f);
++    float cross_thickness = 1.0f;
++#ifdef __SWITCH2__
++    if (is_window_close)
++    {
++        cross_extent *= 1.25f;
++        cross_thickness = 2.0f;
++    }
++#endif
++    window->DrawList->AddLine(cross_center + ImVec2(+cross_extent, +cross_extent), cross_center + ImVec2(-cross_extent, -cross_extent), cross_col, cross_thickness);
++    window->DrawList->AddLine(cross_center + ImVec2(+cross_extent, -cross_extent), cross_center + ImVec2(-cross_extent, +cross_extent), cross_col, cross_thickness);
+ 
+     return pressed;
+ }

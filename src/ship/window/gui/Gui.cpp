@@ -16,6 +16,10 @@
 #include "ship/window/gui/resource/GuiTextureFactory.h"
 #include "ship/window/gui/resource/GuiTexture.h"
 
+#ifdef __SWITCH__
+#include "ship/port/switch/SwitchImpl.h"
+#endif
+
 namespace Ship {
 #define TOGGLE_BTN ImGuiKey_F1
 #define TOGGLE_PAD_BTN ImGuiKey_GamepadBack
@@ -77,6 +81,10 @@ void Gui::Init() {
     iconsConfig.GlyphMinAdvanceX = iconFontSize;
     mImGuiIo->Fonts->AddFontFromMemoryCompressedBase85TTF(fontawesome_compressed_data_base85, iconFontSize,
                                                           &iconsConfig, sIconsRanges);
+#ifdef __SWITCH__
+    Ship::Switch::CreateKeyboard();
+    Ship::Switch::ImGuiSetupFont(mImGuiIo->Fonts);
+#endif
 
 #if defined(__ANDROID__)
     // Scale everything by 2 for Android
@@ -111,13 +119,26 @@ void Gui::Init() {
         static_cast<uint32_t>(RESOURCE_TYPE_GUI_TEXTURE), 0);
 
     ImGuiWMInit();
+#ifdef __SWITCH2__
+    // 1.5x the Switch 1 scale: the Switch 2 draws the UI at 1080p, not 720p.
+    ImGui::GetStyle().ScaleAllSizes(3);
+#elif defined(__SWITCH__)
+    ImGui::GetStyle().ScaleAllSizes(2);
+#endif
     ImGuiBackendInit();
+#ifdef __SWITCH__
+    Ship::Switch::ApplyOverclock();
+#endif
 }
 
 void Gui::ImGuiWMInit() {
 }
 
 void Gui::ShutDownImGui(Ship::Window* window) {
+    if (ImGui::GetCurrentContext() == nullptr) {
+        // Already shut down (Fast3dWindow does it before closing GL).
+        return;
+    }
     ImGuiWMShutdown();
     ImGuiBackendShutdown();
     ImGui::DestroyContext();

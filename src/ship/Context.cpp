@@ -27,6 +27,8 @@
 #include "ship/utils/AppleFolderManager.h"
 #include <unistd.h>
 #include <pwd.h>
+#elif defined(__SWITCH__)
+#include "ship/port/switch/SwitchImpl.h"
 #endif
 
 namespace Ship {
@@ -70,7 +72,7 @@ Context::~Context() {
         mLogger->flush();
     }
     mLogger = nullptr;
-#ifndef _DEBUG
+#if !defined(_DEBUG) && !defined(__SWITCH__)
     mLogThreadPool = nullptr;
 #endif
 }
@@ -175,10 +177,17 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
         auto logPath = GetPathRelativeToAppDirectory(("logs/" + GetName() + ".log"));
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 10, 10);
         sinks.push_back(fileSink);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(__SWITCH__)
+        // On Switch, write each line right away: an async logger loses the lines
+        // still queued when the app crashes, and those are the ones that matter.
         mLogger = std::make_shared<spdlog::logger>("multi_sink", sinks.begin(), sinks.end());
+#ifdef _DEBUG
         GetLogger()->set_level(debugBuildLogLevel);
         GetLogger()->flush_on(spdlog::level::trace);
+#else
+        GetLogger()->set_level(releaseBuildLogLevel);
+        GetLogger()->flush_on(spdlog::level::info);
+#endif
 #else
         mLogThreadPool = std::make_shared<spdlog::details::thread_pool>(8192, 1);
         mLogger = std::make_shared<spdlog::async_logger>(GetName(), sinks.begin(), sinks.end(), mLogThreadPool,
@@ -253,6 +262,10 @@ bool Context::InitResourceManager(const std::vector<std::string>& archivePaths,
     }
 
     if (!allowEmptyPaths && !GetResourceManager()->IsLoaded()) {
+#if defined(__SWITCH__)
+        Ship::Switch::ThrowMissingOTR(mMainPath);
+        printf("Main OTR file not found!\n");
+#else
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "OTR file not found",
                                  "Main OTR file not found. Please generate one", nullptr);
         SPDLOG_ERROR("Main OTR file not found!");
@@ -260,9 +273,12 @@ bool Context::InitResourceManager(const std::vector<std::string>& archivePaths,
         // We need this exit to close the app when we dismiss the dialog
         exit(0);
 #endif
+#endif
         return false;
     }
-
+#ifdef __SWITCH__
+    Ship::Switch::Init(PostInitPhase);
+#endif
     return true;
 }
 
@@ -281,6 +297,7 @@ bool Context::InitControlDeck(std::shared_ptr<ControlDeck> controlDeck) {
     // Bring up the SDL game-controller subsystem here rather than in osContInit, so controllers work
     // in pre-game UI (e.g. navigating extraction prompts). osContInit still runs ControlDeck::Init(),
     // which needs the game's controllerBits.
+#ifndef __SWITCH__
     std::string controllerDb = LocateFileAcrossAppDirs("gamecontrollerdb.txt");
     int mappingsAdded = SDL_GameControllerAddMappingsFromFile(controllerDb.c_str());
     if (mappingsAdded >= 0) {
@@ -288,6 +305,7 @@ bool Context::InitControlDeck(std::shared_ptr<ControlDeck> controlDeck) {
     } else {
         SPDLOG_WARN("Failed to add SDL game controller mappings from \"{}\" ({})", controllerDb, SDL_GetError());
     }
+#endif
     SDL_SetHint(SDL_HINT_JOYSTICK_THREAD, "1");
     if (SDL_Init(SDL_INIT_GAMECONTROLLER) != 0) {
         SPDLOG_WARN("Failed to initialize SDL game controllers ({})", SDL_GetError());

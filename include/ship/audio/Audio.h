@@ -2,6 +2,7 @@
 
 #include <string>
 #include <memory>
+#include <mutex>
 #include <vector>
 #include "ship/audio/AudioPlayer.h"
 
@@ -90,6 +91,8 @@ class Audio {
     AudioChannelsSetting GetSavedAudioChannelsSetting();
 
   private:
+    // Guards mAudioPlayer: the audio thread reads it while the UI can replace it.
+    std::mutex mAudioPlayerMutex;
     std::shared_ptr<AudioPlayer> mAudioPlayer;
     AudioBackend mAudioBackend;
     AudioSettings mAudioSettings;

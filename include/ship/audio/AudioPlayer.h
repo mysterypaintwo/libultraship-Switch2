@@ -3,6 +3,7 @@
 #include "stddef.h"
 #include <string>
 #include <memory>
+#include <mutex>
 #include "ship/audio/AudioChannelsSetting.h"
 #include "ship/audio/SoundMatrixDecoder.h"
 
@@ -45,6 +46,14 @@ class AudioPlayer {
      * @return true if the audio device was initialised successfully.
      */
     bool Init();
+
+    /**
+     * @brief Closes the output device. Play() does nothing afterwards.
+     *
+     * Audio::InitAudioPlayer calls it on the old player before it opens a new
+     * one: some backends (SDL on Switch) can only have one device open.
+     */
+    void Close();
 
     /**
      * @brief Returns the number of audio frames currently queued in the device buffer.
@@ -120,6 +129,16 @@ class AudioPlayer {
 
   protected:
     /**
+     * @brief Held while the device is opened, closed, played into or queried.
+     *
+     * The audio thread plays into the device while the UI thread can change the
+     * channels or the backend. Recursive, so that DoPlay may call Buffered().
+     */
+    std::recursive_mutex& DeviceMutex() {
+        return mDeviceMutex;
+    }
+
+    /**
      * @brief Opens and configures the platform audio device.
      *
      * Called by Init() and by SetAudioChannels() when reinitialising.
@@ -151,6 +170,7 @@ class AudioPlayer {
 
     AudioSettings mAudioSettings;
     bool mInitialized = false;
+    std::recursive_mutex mDeviceMutex;
 };
 } // namespace Ship
 

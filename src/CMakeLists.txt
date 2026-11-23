@@ -63,6 +63,72 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/ship/utils/macUtils.mm PROPERTIES COMPILE_FLAGS -fno-objc-arc)
 endif()
 
+source_group("utils" FILES ${Source_Files__Utils})
+target_sources(libultraship PRIVATE ${Source_Files__Utils})
+
+#=================== Port ===================
+
+if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    set(Source_Files__Port
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchImpl.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchImpl.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchCrashReport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/Switch2Debug.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchLoading.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchLoading.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchShaderCache.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchShaderCache.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchPerformanceProfiles.h
+    )
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(Source_Files__Port
+        ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/mobile/MobileImpl.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/mobile/MobileImpl.cpp
+    )
+endif()
+
+source_group("port" FILES ${Source_Files__Port})
+target_sources(libultraship PRIVATE ${Source_Files__Port})
+
+#=================== Resource ===================
+
+file(GLOB Source_Files__Resource RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "resource/*.h" "resource/*.cpp")
+source_group("resource" FILES ${Source_Files__Resource})
+
+file(GLOB Source_Files__Resource__Types RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "resource/type/*.h" "resource/type/*.cpp")
+source_group("resource/type" FILES ${Source_Files__Resource__Types})
+
+file(GLOB Source_Files__Resource__Factories RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "resource/factory/*.h" "resource/factory/*.cpp")
+source_group("resource/factory" FILES ${Source_Files__Resource__Factories})
+
+file(GLOB Source_Files__Resource__Archive RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "resource/archive/*.h" "resource/archive/*.cpp")
+source_group("resource/archive" FILES ${Source_Files__Resource__Archive})
+
+target_sources(libultraship PRIVATE ${Source_Files__Resource} ${Source_Files__Resource__Types} ${Source_Files__Resource__Factories} ${Source_Files__Resource__Archive})
+
+#=================== Graphic ===================
+
+file(GLOB Source_Files__Graphic RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "graphic/Fast3D/*.h" "graphic/Fast3D/*.cpp" "graphic/Fast3D/*.c" "graphic/Fast3D/backends/*.cpp" "graphic/Fast3D/debug/*.h" "graphic/Fast3D/debug/*.cpp" "graphic/Fast3D/debug/*.c")
+
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    list(FILTER Source_Files__Graphic EXCLUDE REGEX "graphic/Fast3D/backends/gfx_dxgi*")
+    list(FILTER Source_Files__Graphic EXCLUDE REGEX "graphic/Fast3D/backends/gfx_direct3d*")
+    list(FILTER Source_Files__Graphic EXCLUDE REGEX "graphic/Fast3D/backends/dxsdk/*")
+endif()
+
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    list(FILTER Source_Files__Graphic EXCLUDE REGEX "graphic/Fast3D/backends/gfx_metal*")
+endif()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    list(FILTER Source_Files__Graphic EXCLUDE REGEX "graphic/Fast3D/backends/gfx_opengl*")
+endif()
+
+source_group("graphic" FILES ${Source_Files__Graphic})
+source_group("graphic_debug" FILES ${Source_Files__Graphic_Debug})
+target_sources(libultraship PRIVATE ${Source_Files__Graphic})
+target_sources(libultraship PRIVATE ${Source_Files__Graphic_Debug})
+
 #=================== Packages & Includes ===================
 
 target_include_directories(libultraship
@@ -72,7 +138,7 @@ target_include_directories(libultraship
 
 #=================== Linking ===================
 if(INCLUDE_MPQ_SUPPORT)
-    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
         target_link_libraries(libultraship PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,storm>")
     else()
         target_link_libraries(libultraship PUBLIC storm)
@@ -82,6 +148,14 @@ endif()
 target_link_libraries(libultraship
     PUBLIC ImGui
 )
+
+if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # Bigger default thread stacks: see __wrap_pthread_create in SwitchImpl.cpp.
+    # Crash reports for unexpected exit() calls and failed asserts: see
+    # __wrap_exit and __wrap___assert_func in SwitchCrashReport.cpp.
+    target_link_options(libultraship INTERFACE "-Wl,--wrap=pthread_create" "-Wl,--wrap=exit"
+        "-Wl,--wrap=__assert_func" "-Wl,-u,__syscall_abort")
+endif()
 
 target_link_libraries(libultraship PRIVATE stb)
 
@@ -258,4 +332,3 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang")
     )
     endif()
 endif()
-

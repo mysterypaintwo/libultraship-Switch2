@@ -30,6 +30,11 @@
 #include <SDL.h>
 #include "fast/backends/gfx_metal.h"
 #include "ship/utils/macUtils.h"
+#elif __SWITCH__
+#include <SDL2/SDL.h>
+#include <switch.h>
+#include <glad/glad.h>
+#include "ship/port/switch/SwitchImpl.h"
 #else
 #include <SDL2/SDL.h>
 #define GL_GLEXT_PROTOTYPES 1
@@ -37,6 +42,7 @@
 #endif
 
 #include "ship/window/gui/Gui.h"
+#include "ship/port/switch/Switch2Debug.h"
 #include "fast/Fast3dGui.h"
 
 #ifdef _WIN32
@@ -274,6 +280,11 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
 }
 
 void GfxWindowBackendSDL2::GetActiveWindowRefreshRate(uint32_t* refresh_rate) {
+#ifdef __SWITCH__
+    // SDL always reports 60 Hz here.
+    *refresh_rate = Ship::Switch::GetRefreshRate();
+    return;
+#endif
     int display_in_use = SDL_GetWindowDisplayIndex(mWnd);
 
     SDL_DisplayMode mode;
@@ -290,6 +301,10 @@ static HANDLE mTimer;
 #define FRAME_INTERVAL_US_DENOMINATOR (mTargetFps)
 
 void GfxWindowBackendSDL2::Close() {
+#ifdef __SWITCH__
+    SPDLOG_INFO("Window closed: the program quits");
+    LusSwitch_NoteQuit("window closed");
+#endif
     mIsRunning = false;
 }
 
@@ -350,6 +365,15 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#elif defined(__SWITCH2__)
+    // Switch 2: a 4.1 core context, as on macOS (see GFX_OPENGL_CORE in gfx_opengl.cpp).
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#elif defined(__SWITCH__)
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #endif
 
 #ifdef _WIN32
@@ -372,6 +396,11 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
     char title[512];
     int len = snprintf(title, sizeof(title), "%s (%s)", gameName, gfxApiName);
+
+#ifdef __SWITCH__
+    // For Switch we need to set the window width before creating the window
+    Ship::Switch::GetDisplaySize(&mWindowWidth, &mWindowHeight);
+#endif
 
 #ifdef __IOS__
     Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN;
@@ -415,7 +444,21 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
         SDL_GL_MakeCurrent(mWnd, mCtx);
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
-
+#ifdef __SWITCH__
+        Ship::Switch::ApplyFrameRate(mTargetFps, true);
+#endif
+#ifdef __SWITCH__
+        if (mCtx == nullptr) {
+            SPDLOG_ERROR("SDL_GL_CreateContext failed: {}", SDL_GetError());
+        }
+        if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
+            printf("Failed to initialize glad\n");
+            SPDLOG_ERROR("Failed to initialize glad");
+        } else {
+            SPDLOG_INFO("OpenGL {} ({}, {})", (const char*)glGetString(GL_VERSION),
+                        (const char*)glGetString(GL_RENDERER), (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION));
+        }
+#endif
         window_impl.Opengl = { mWnd, mCtx };
         window_impl.Backend = WindowBackend::FAST3D_SDL_OPENGL;
     } else {
@@ -639,7 +682,9 @@ void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
         case SDL_WINDOWEVENT:
             switch (event.window.event) {
                 case SDL_WINDOWEVENT_SIZE_CHANGED:
-#ifdef __APPLE__
+#ifdef __SWITCH__
+                    Ship::Switch::GetDisplaySize(&mWindowWidth, &mWindowHeight);
+#elif __APPLE__
                     SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
 #else
                     SDL_GL_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
@@ -658,6 +703,10 @@ void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
             Ship::Context::GetRawInstance()->GetFileDropMgr()->SetDroppedFile(event.drop.file);
             break;
         case SDL_QUIT:
+#ifdef __SWITCH__
+            // SDL sends it when appletMainLoop() says the app must close.
+            SPDLOG_INFO("SDL_QUIT received");
+#endif
             Close();
             break;
     }
@@ -743,11 +792,19 @@ void GfxWindowBackendSDL2::SwapBuffersBegin() {
     if (mVsyncEnabled != nextVsyncEnabled) {
         mVsyncEnabled = nextVsyncEnabled;
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
+#ifdef __SWITCH__
+        Ship::Switch::ApplyFrameRate(mTargetFps, true);
+#endif
         SDL_RenderSetVSync(mRenderer, mVsyncEnabled ? 1 : 0);
     }
 
+    Switch2Prof_Begin(SW2P_PACE);
     SyncFramerateWithTime();
+    Switch2Prof_End(SW2P_PACE);
+    Switch2Prof_Begin(SW2P_SWAP);
     SDL_GL_SwapWindow(mWnd);
+    Switch2Prof_End(SW2P_SWAP);
+    Switch2Prof_Present(mTargetFps);
 }
 
 void GfxWindowBackendSDL2::SwapBuffersEnd() {
@@ -763,6 +820,9 @@ int GfxWindowBackendSDL2::GetTargetFps() {
 
 void GfxWindowBackendSDL2::SetTargetFps(int fps) {
     mTargetFps = fps;
+#ifdef __SWITCH__
+    Ship::Switch::ApplyFrameRate(fps);
+#endif
 }
 
 void GfxWindowBackendSDL2::SetMaxFrameLatency(int latency) {
@@ -778,11 +838,18 @@ bool GfxWindowBackendSDL2::CanDisableVsync() {
 }
 
 bool GfxWindowBackendSDL2::IsRunning() {
+#ifdef __SWITCH__
+    return mIsRunning && Ship::Switch::IsRunning();
+#else
     return mIsRunning;
+#endif
 }
 
 void GfxWindowBackendSDL2::Destroy() {
     // TODO: destroy _any_ resources used by SDL
+#ifdef __SWITCH__
+    Ship::Switch::Exit();
+#endif
     SDL_GL_DeleteContext(mCtx);
     SDL_DestroyWindow(mWnd);
     SDL_DestroyRenderer(mRenderer);

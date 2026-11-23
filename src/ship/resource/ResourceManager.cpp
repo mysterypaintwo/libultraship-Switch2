@@ -8,6 +8,7 @@
 #include "ship/utils/Utils.h"
 #include "ship/config/ConsoleVariable.h"
 #include "ship/Context.h"
+#include "ship/port/switch/Switch2Debug.h"
 
 namespace Ship {
 
@@ -55,9 +56,12 @@ void ResourceManager::Init(const std::vector<std::string>& archivePaths,
     mResourceLoader = std::make_shared<ResourceLoader>();
     mArchiveManager = std::make_shared<ArchiveManager>();
     GetArchiveManager()->Init(archivePaths, validHashes);
-
+#if defined(__SWITCH__)
+    size_t threadCount = 1;
+#else
     // the extra `- 1` is because we reserve an extra thread for spdlog
     size_t threadCount = std::max(1, (int32_t)(std::thread::hardware_concurrency() - reservedThreadCount - 1));
+#endif
     mThreadPool = std::make_shared<BS::thread_pool>(threadCount);
 
     if (!IsLoaded()) {
@@ -75,6 +79,7 @@ bool ResourceManager::IsLoaded() {
 }
 
 std::shared_ptr<File> ResourceManager::LoadFileProcess(const std::string& filePath) {
+    SWITCH2_PROF_ANY(SW2P_FILE_READ);
     auto file = mArchiveManager->LoadFile(filePath);
     if (file != nullptr) {
         SPDLOG_TRACE("Loaded File {} on ResourceManager", filePath);
@@ -149,10 +154,17 @@ std::shared_ptr<IResource> ResourceManager::LoadResourceProcess(const ResourceId
         }
     }
 
+    SWITCH2_PROF_ANY(SW2P_RESOURCE);
     // Get the file from the OTR. It may be null when the resource exists only as a `.meta`
     // alias (no real file at this path); fall through so the loader can resolve the alias,
     // but only when a `.meta` for this path actually exists.
     auto file = LoadFileProcess(identifier.Path);
+#ifdef __SWITCH__
+    Switch2Prof_Count(SW2C_RESOURCES, 1);
+    if (file != nullptr && file->Buffer != nullptr) {
+        Switch2Prof_Count(SW2C_RESOURCE_BYTES, static_cast<unsigned int>(file->Buffer->size()));
+    }
+#endif
     if (file == nullptr && !mArchiveManager->HasFile(identifier.Path + ".meta")) {
         SPDLOG_TRACE("Failed to load resource file at path {}", identifier.Path);
         mResourceCache[identifier] = ResourceLoadError::NotFound;

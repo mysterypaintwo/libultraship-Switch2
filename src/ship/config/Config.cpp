@@ -232,6 +232,17 @@ void Config::Save() {
         }
     }
     fs::rename(tempPath, configPath, ec);
+#if defined(__SWITCH__) || defined(__WIIU__)
+    // The console's file system does not replace an existing file on rename
+    // (it fails with "File exists"), so the config was never saved. Remove the
+    // old config, then move the new one in its place.
+    if (ec) {
+        std::error_code removeEc;
+        fs::remove(configPath, removeEc);
+        ec.clear();
+        fs::rename(tempPath, configPath, ec);
+    }
+#endif
     if (ec) {
         SPDLOG_ERROR("Could not replace config \"{}\": {}", mPath, ec.message());
         std::error_code removeEc;

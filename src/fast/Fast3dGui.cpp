@@ -24,6 +24,10 @@
 #include "ship/port/mobile/MobileImpl.h"
 #endif
 
+#ifdef __SWITCH__
+#include "ship/port/switch/SwitchImpl.h"
+#endif
+
 #ifdef ENABLE_OPENGL
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
@@ -58,7 +62,7 @@ bool Fast3dGui::SupportsViewports() {
     }
 #endif
 
-#if defined(__ANDROID__) || defined(__IOS__)
+#if defined(__ANDROID__) || defined(__IOS__) || defined(__SWITCH__)
     return false;
 #endif
 
@@ -70,7 +74,9 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
             ImGui_ImplSDL2_ProcessEvent(static_cast<const SDL_Event*>(event.Sdl.Event));
-#if defined(__ANDROID__) || defined(__IOS__)
+#ifdef __SWITCH__
+            Ship::Switch::ImGuiProcessEvent(ImGui::GetIO().WantTextInput);
+#elif defined(__ANDROID__) || defined(__IOS__)
             Ship::Mobile::ImGuiProcessEvent(ImGui::GetIO().WantTextInput);
 #endif
             break;
@@ -144,7 +150,7 @@ void Fast3dGui::ImGuiBackendInit() {
     switch (mImpl.Backend) {
 #ifdef ENABLE_OPENGL
         case WindowBackend::FAST3D_SDL_OPENGL:
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__SWITCH2__)
             ImGui_ImplOpenGL3_Init("#version 410 core");
 #elif USE_OPENGLES
             ImGui_ImplOpenGL3_Init("#version 300 es");

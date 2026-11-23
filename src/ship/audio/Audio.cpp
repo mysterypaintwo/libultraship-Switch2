@@ -15,30 +15,49 @@ Audio::~Audio() {
 }
 
 void Audio::InitAudioPlayer() {
+    // Close the old device before opening the new one. The audio thread may
+    // still hold the old player for a moment; Close() waits for its Play().
+    std::shared_ptr<AudioPlayer> oldPlayer;
+    {
+        std::lock_guard<std::mutex> lock(mAudioPlayerMutex);
+        oldPlayer = std::move(mAudioPlayer);
+    }
+    if (oldPlayer != nullptr) {
+        oldPlayer->Close();
+        oldPlayer = nullptr;
+    }
+
+    std::shared_ptr<AudioPlayer> player;
     switch (GetCurrentAudioBackend()) {
 #ifdef _WIN32
         case AudioBackend::WASAPI:
-            mAudioPlayer = std::make_shared<WasapiAudioPlayer>(this->mAudioSettings);
+            player = std::make_shared<WasapiAudioPlayer>(this->mAudioSettings);
             break;
 #endif
 #ifdef __APPLE__
         case AudioBackend::COREAUDIO:
-            mAudioPlayer = std::make_shared<CoreAudioAudioPlayer>(this->mAudioSettings);
+            player = std::make_shared<CoreAudioAudioPlayer>(this->mAudioSettings);
             break;
 #endif
         case AudioBackend::SDL:
-            mAudioPlayer = std::make_shared<SDLAudioPlayer>(this->mAudioSettings);
+            player = std::make_shared<SDLAudioPlayer>(this->mAudioSettings);
             break;
         default:
-            mAudioPlayer = std::make_shared<NullAudioPlayer>(this->mAudioSettings);
+            player = std::make_shared<NullAudioPlayer>(this->mAudioSettings);
             break;
     }
 
-    if (mAudioPlayer && !mAudioPlayer->Init()) {
+    if (player && !player->Init()) {
         // Failed to initialize system audio player.
         // Fallback to Null if the native system player does not work.
-        SetCurrentAudioBackend(AudioBackend::NUL);
+        if (GetCurrentAudioBackend() != AudioBackend::NUL) {
+            SetCurrentAudioBackend(AudioBackend::NUL);
+            return;
+        }
     }
+
+    std::lock_guard<std::mutex> lock(mAudioPlayerMutex);
+    mAudioPlayer = std::move(player);
 }
 
 void Audio::Init() {
@@ -59,6 +78,7 @@ void Audio::Init() {
 }
 
 std::shared_ptr<AudioPlayer> Audio::GetAudioPlayer() {
+    std::lock_guard<std::mutex> lock(mAudioPlayerMutex);
     return mAudioPlayer;
 }
 
@@ -136,8 +156,8 @@ void Audio::SetAudioChannels(AudioChannelsSetting channels) {
     if (mAudioSettings.ChannelSetting != channels) {
         mAudioSettings.ChannelSetting = channels;
         // Reinitialize the existing audio player with the new channel configuration
-        if (mAudioPlayer) {
-            mAudioPlayer->SetAudioChannels(channels);
+        if (auto player = GetAudioPlayer()) {
+            player->SetAudioChannels(channels);
         }
     }
 }
