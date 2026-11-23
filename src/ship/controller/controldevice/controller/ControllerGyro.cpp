@@ -4,6 +4,9 @@
 #include "ship/config/ConsoleVariable.h"
 #include "ship/utils/StringHelper.h"
 #include "ship/controller/controldevice/controller/mapping/factories/GyroMappingFactory.h"
+#ifdef __SWITCH__
+#include "ship/controller/controldevice/controller/mapping/sdl/SDLGyroMapping.h"
+#endif
 
 namespace Ship {
 ControllerGyro::ControllerGyro(uint8_t portIndex) : mPortIndex(portIndex) {
@@ -70,6 +73,14 @@ void ControllerGyro::ClearGyroMapping() {
     mGyroMapping = nullptr;
     SaveGyroMappingIdToConfig();
 }
+
+#ifdef __SWITCH__
+void ControllerGyro::EnsureDefaultMapping() {
+    if (mGyroMapping == nullptr) {
+        mGyroMapping = std::make_shared<SDLGyroMapping>(mPortIndex, 1.0f, 0.0f, 0.0f, 0.0f);
+    }
+}
+#endif
 
 void ControllerGyro::ReloadGyroMappingFromConfig() {
     const std::string gyroMappingIdCvarKey =

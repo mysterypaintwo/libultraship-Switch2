@@ -372,6 +372,12 @@ struct MaskedTextureEntry {
 
 class Interpreter {
   public:
+    // Builds these shaders now, so they do not compile during play.
+    void PrepareShaders(const std::vector<std::pair<uint64_t, uint64_t>>& shaders, void (*progress)(int, int));
+#ifdef __SWITCH__
+    // Makes the driver finish these shaders' GPU code before the game starts.
+    void WarmShaders(const std::vector<std::pair<uint64_t, uint64_t>>& shaders, void (*progress)(int, int));
+#endif
     Interpreter();
     ~Interpreter();
 

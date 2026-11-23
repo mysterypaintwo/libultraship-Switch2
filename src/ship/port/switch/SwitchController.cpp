@@ -1,6 +1,8 @@
 #ifdef __SWITCH__
 #include "SwitchController.h"
+#include "Switch2Debug.h"
 #include <algorithm>
+#include <cstdio>
 
 namespace Ship {
 
@@ -47,6 +49,16 @@ bool SwitchController::EnsureInitialized(uint8_t portIndex) {
     return true;
 }
 
+static bool ReadConnectedSensor(HidSixAxisSensorHandle handle, HidSixAxisSensorState& state) {
+    HidSixAxisSensorState sample = {};
+    if (hidGetSixAxisSensorStates(handle, &sample, 1) == 0 ||
+        (sample.attributes & HidSixAxisSensorAttribute_IsConnected) == 0) {
+        return false;
+    }
+    state = sample;
+    return true;
+}
+
 bool SwitchController::ReadSixAxisState(uint8_t portIndex, HidSixAxisSensorState& state) {
     if (!EnsureInitialized(portIndex)) {
         return false;
@@ -56,34 +68,50 @@ bool SwitchController::ReadSixAxisState(uint8_t portIndex, HidSixAxisSensorState
     padUpdate(&controller.State);
     const uint64_t styleSet = padGetStyleSet(&controller.State);
 
-    if (styleSet & HidNpadStyleTag_NpadFullKey) {
-        hidGetSixAxisSensorStates(controller.Sensors[1], &state, 1);
+    if ((styleSet & HidNpadStyleTag_NpadFullKey) && ReadConnectedSensor(controller.Sensors[1], state)) {
         return true;
     }
 
     if (styleSet & HidNpadStyleTag_NpadJoyDual) {
         const uint64_t attributes = padGetAttributes(&controller.State);
-        if (attributes & HidNpadAttribute_IsLeftConnected) {
-            hidGetSixAxisSensorStates(controller.Sensors[2], &state, 1);
+        if ((attributes & HidNpadAttribute_IsRightConnected) && ReadConnectedSensor(controller.Sensors[3], state)) {
             return true;
         }
-        if (attributes & HidNpadAttribute_IsRightConnected) {
-            hidGetSixAxisSensorStates(controller.Sensors[3], &state, 1);
+        if ((attributes & HidNpadAttribute_IsLeftConnected) && ReadConnectedSensor(controller.Sensors[2], state)) {
             return true;
         }
     }
 
-    if (styleSet & HidNpadStyleTag_NpadHandheld) {
-        hidGetSixAxisSensorStates(controller.Sensors[0], &state, 1);
+    if ((styleSet & HidNpadStyleTag_NpadHandheld) && ReadConnectedSensor(controller.Sensors[0], state)) {
         return true;
     }
 
+    // The reported style may not match the controller, so try every sensor.
+    for (const auto& sensor : controller.Sensors) {
+        if (ReadConnectedSensor(sensor, state)) {
+            return true;
+        }
+    }
     return false;
 }
 
 bool SwitchController::ReadGyro(uint8_t portIndex, float& pitch, float& yaw, float& roll) {
     HidSixAxisSensorState sixAxisState = {};
-    if (!ReadSixAxisState(portIndex, sixAxisState)) {
+    const bool haveSensor = ReadSixAxisState(portIndex, sixAxisState);
+    if (Switch2Debug_Enabled() && portIndex == 0) {
+        static uint64_t sLastReport = 0;
+        const uint64_t now = armGetSystemTick();
+        if (now - sLastReport > armGetSystemTickFreq() * 2) {
+            sLastReport = now;
+            char line[128];
+            snprintf(line, sizeof(line), "G sensor=%d style=0x%llx attrs=0x%x x=%.3f y=%.3f z=%.3f", haveSensor,
+                     (unsigned long long)padGetStyleSet(&mControllers[portIndex].State), sixAxisState.attributes,
+                     sixAxisState.angular_velocity.x, sixAxisState.angular_velocity.y,
+                     sixAxisState.angular_velocity.z);
+            Switch2Debug_Log(line);
+        }
+    }
+    if (!haveSensor) {
         pitch = 0.0f;
         yaw = 0.0f;
         roll = 0.0f;

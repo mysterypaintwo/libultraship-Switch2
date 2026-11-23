@@ -27,6 +27,10 @@ class ControllerGyro {
 
     /** @brief Removes the in-memory gyro mapping (does not touch Config). */
     void ClearGyroMapping();
+#ifdef __SWITCH__
+    // The console always has motion sensors, so gyro aiming works without mapping it first.
+    void EnsureDefaultMapping();
+#endif
 
     /** @brief Writes the current gyro mapping ID to Config. */
     void SaveGyroMappingIdToConfig();

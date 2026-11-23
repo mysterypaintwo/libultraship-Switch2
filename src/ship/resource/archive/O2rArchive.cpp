@@ -3,7 +3,89 @@
 #include "ship/Context.h"
 #include "ship/window/Window.h"
 #include "spdlog/spdlog.h"
+#include <algorithm>
 #include <unordered_map>
+
+#ifdef __SWITCH__
+#include "ship/port/switch/SwitchLoading.h"
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <map>
+#include <mutex>
+
+namespace {
+// The game archives hold tens of thousands of very small files, and reading each
+// one from the SD card costs about a millisecond, which stalls map changes. Keep
+// the whole archive in memory instead. If that fails, it is read from the SD card.
+struct ArchiveImage {
+    void* data = nullptr;
+    size_t size = 0;
+};
+
+constexpr long kMaxArchiveInMemory = 512L * 1024 * 1024;
+constexpr size_t kArchiveReadChunk = 1024 * 1024;
+
+const ArchiveImage* GetArchiveImage(const std::string& path) {
+    const std::string name = std::filesystem::path(path).filename().string();
+    if (name != "mm.o2r" && name != "2ship.o2r") {
+        return nullptr;
+    }
+
+    static std::mutex sMutex;
+    static std::map<std::string, ArchiveImage> sImages;
+    std::lock_guard<std::mutex> lock(sMutex);
+    auto found = sImages.find(path);
+    if (found != sImages.end()) {
+        return &found->second;
+    }
+
+    FILE* file = fopen(path.c_str(), "rb");
+    if (file == nullptr) {
+        return nullptr;
+    }
+    fseek(file, 0, SEEK_END);
+    const long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    void* data = (size > 0 && size <= kMaxArchiveInMemory) ? malloc(size) : nullptr;
+    if (data == nullptr) {
+        fclose(file);
+        return nullptr;
+    }
+    size_t done = 0;
+    while (done < static_cast<size_t>(size)) {
+        const size_t chunk = std::min(kArchiveReadChunk, static_cast<size_t>(size) - done);
+        if (fread(static_cast<char*>(data) + done, 1, chunk, file) != chunk) {
+            break;
+        }
+        done += chunk;
+        SwitchLoading_Update(static_cast<int>(done / 1024), static_cast<int>(size / 1024));
+    }
+    fclose(file);
+    if (done != static_cast<size_t>(size)) {
+        free(data);
+        return nullptr;
+    }
+    SPDLOG_INFO("Keeping {} in memory ({} KB)", name, size / 1024);
+    return &(sImages[path] = ArchiveImage{ data, static_cast<size_t>(size) });
+}
+
+zip_t* OpenArchiveImage(const ArchiveImage& image) {
+    zip_error_t error;
+    zip_error_init(&error);
+    zip_source_t* source = zip_source_buffer_create(image.data, image.size, 0, &error);
+    zip_t* archive = nullptr;
+    if (source != nullptr) {
+        archive = zip_open_from_source(source, ZIP_RDONLY, &error);
+        if (archive == nullptr) {
+            zip_source_free(source);
+        }
+    }
+    zip_error_fini(&error);
+    return archive;
+}
+} // namespace
+#endif
 
 namespace Ship {
 O2rArchive::O2rArchive(const std::string& archivePath) : Archive(archivePath) {
@@ -22,6 +104,13 @@ zip_t* O2rArchive::GetZipHandle() {
         mZipArchivePool.pop_back();
         return handle;
     }
+#ifdef __SWITCH__
+    if (const ArchiveImage* image = GetArchiveImage(GetPath())) {
+        if (zip_t* handle = OpenArchiveImage(*image)) {
+            return handle;
+        }
+    }
+#endif
     return zip_open(GetPath().c_str(), ZIP_RDONLY, nullptr);
 }
 
@@ -95,7 +184,16 @@ std::shared_ptr<File> O2rArchive::LoadFile(const std::string& filePath) {
 }
 
 bool O2rArchive::Open() {
+#ifdef __SWITCH__
+    if (const ArchiveImage* image = GetArchiveImage(GetPath())) {
+        mZipArchive = OpenArchiveImage(*image);
+    }
+    if (mZipArchive == nullptr) {
+        mZipArchive = zip_open(GetPath().c_str(), ZIP_CREATE, nullptr);
+    }
+#else
     mZipArchive = zip_open(GetPath().c_str(), ZIP_CREATE, nullptr);
+#endif
     if (mZipArchive == nullptr) {
         SPDLOG_ERROR("Failed to load zip file \"{}\"", GetPath());
         return false;

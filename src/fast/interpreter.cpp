@@ -1,5 +1,6 @@
 #define NOMINMAX
 
+#include "ship/port/switch/Switch2Debug.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -26,6 +27,9 @@ extern "C" char __end__[];
 #include <list>
 #include <stack>
 #include "fast/resource/type/Light.h"
+#ifdef __SWITCH__
+#include "fast/backends/gfx_opengl.h"
+#endif
 
 #ifndef _LANGUAGE_C
 #define _LANGUAGE_C
@@ -159,6 +163,38 @@ ShaderProgram* Interpreter::LookupOrCreateShaderProgram(uint64_t id0, uint64_t i
     }
     return prg;
 }
+
+void Interpreter::PrepareShaders(const std::vector<std::pair<uint64_t, uint64_t>>& shaders,
+                                 void (*progress)(int, int)) {
+    for (size_t i = 0; i < shaders.size(); i++) {
+        LookupOrCreateShaderProgram(shaders[i].first, shaders[i].second);
+        if (progress != nullptr) {
+            progress(static_cast<int>(i + 1), static_cast<int>(shaders.size()));
+        }
+    }
+    mRapi->UnloadShader(mRenderingState.mShaderProgram);
+    mRenderingState.mShaderProgram = nullptr;
+}
+
+#ifdef __SWITCH__
+void Interpreter::WarmShaders(const std::vector<std::pair<uint64_t, uint64_t>>& shaders, void (*progress)(int, int)) {
+    // Switch builds always render with the OpenGL backend.
+    auto* gl = static_cast<GfxRenderingAPIOGL*>(mRapi);
+    gl->BeginShaderWarmup();
+    for (size_t i = 0; i < shaders.size(); i++) {
+        ShaderProgram* prg = mRapi->LookupShader(shaders[i].first, shaders[i].second);
+        if (prg != nullptr) {
+            mRapi->LoadShader(prg);
+            gl->WarmLoadedShader();
+            mRapi->UnloadShader(prg);
+        }
+        if (progress != nullptr) {
+            progress(static_cast<int>(i + 1), static_cast<int>(shaders.size()));
+        }
+    }
+    gl->EndShaderWarmup();
+}
+#endif
 
 const char* Interpreter::CCMUXtoStr(uint32_t ccmux) {
     static constexpr std::array tbl = {
@@ -1255,6 +1291,7 @@ void Interpreter::ImportTextureRaw(int tile, bool importReplacement) {
 }
 
 void Interpreter::ImportTexture(int i, int tile, bool importReplacement) {
+    SWITCH2_PROF(SW2P_TEX_IMPORT);
     uint8_t fmt = mRdp->texture_tile[tile].fmt;
     uint8_t siz = mRdp->texture_tile[tile].siz;
     uint32_t texFlags = mRdp->loaded_texture[mRdp->texture_tile[tile].tmem_index].tex_flags;
@@ -5213,7 +5250,9 @@ void Interpreter::Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_r
 }
 
 void Interpreter::EndFrame() {
+    Switch2Prof_Begin(SW2P_GL_FLUSH);
     mRapi->EndFrame();
+    Switch2Prof_End(SW2P_GL_FLUSH);
     mWapi->SwapBuffersBegin();
     mRapi->FinishRender();
     mWapi->SwapBuffersEnd();

@@ -74,6 +74,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchImpl.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchCrashReport.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/Switch2Debug.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchLoading.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchLoading.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchShaderCache.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchShaderCache.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/ship/port/switch/SwitchPerformanceProfiles.h
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")

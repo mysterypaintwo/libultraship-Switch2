@@ -1,4 +1,5 @@
 #include "fast/Fast3dWindow.h"
+#include "ship/port/switch/Switch2Debug.h"
 
 #include "ship/Context.h"
 #include "ship/config/Config.h"
@@ -214,13 +215,19 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
     // Setup mouse state manager
     wnd->GetMouseStateManager()->StartFrame();
     // Setup of the backend frames and draw initial Window and GUI menus
+    Switch2Prof_Begin(SW2P_GUI_START);
     gui->StartDraw();
+    Switch2Prof_End(SW2P_GUI_START);
     // Setup game framebuffers to match available window space
     mInterpreter->StartFrame();
     // Execute the games gfx commands
+    Switch2Prof_Begin(SW2P_RDP);
     mInterpreter->Run(commands, mtxReplacements);
+    Switch2Prof_End(SW2P_RDP);
     // Renders the game frame buffer to the final window and finishes the GUI
+    Switch2Prof_Begin(SW2P_GUI_END);
     gui->EndDraw();
+    Switch2Prof_End(SW2P_GUI_END);
     // Finalize swap buffers
     mInterpreter->EndFrame();
 

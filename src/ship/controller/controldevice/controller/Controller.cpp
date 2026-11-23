@@ -104,6 +104,9 @@ void Controller::AddDefaultMappings(PhysicalDeviceType physicalDeviceType) {
     GetLeftStick()->AddDefaultMappings(physicalDeviceType);
     GetRightStick()->AddDefaultMappings(physicalDeviceType);
     GetRumble()->AddDefaultMappings(physicalDeviceType);
+#ifdef __SWITCH__
+    GetGyro()->EnsureDefaultMapping();
+#endif
 
     const std::string hasConfigCvarKey =
         StringHelper::Sprintf(CVAR_PREFIX_CONTROLLERS ".Port%d.HasConfig", mPortIndex + 1);
@@ -118,6 +121,9 @@ void Controller::ReloadAllMappingsFromConfig() {
     GetLeftStick()->ReloadAllMappingsFromConfig();
     GetRightStick()->ReloadAllMappingsFromConfig();
     GetGyro()->ReloadGyroMappingFromConfig();
+#ifdef __SWITCH__
+    GetGyro()->EnsureDefaultMapping();
+#endif
     GetRumble()->ReloadAllMappingsFromConfig();
     GetLED()->ReloadAllMappingsFromConfig();
 }
