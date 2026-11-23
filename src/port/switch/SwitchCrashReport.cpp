@@ -15,6 +15,8 @@
 // ones), newest first.
 #ifdef __SWITCH__
 
+#include "Switch2Debug.h"
+#include <cstring>
 #include <switch.h>
 
 #include <csignal>
@@ -119,6 +121,15 @@ void WriteReport() {
         return;
     }
     sReportWritten = true;
+    // Also send it to the debug stream, in case the SD card cannot be written.
+    for (size_t start = 0; start < sReportLen;) {
+        const char* end = static_cast<const char*>(memchr(sReport + start, '\n', sReportLen - start));
+        const size_t length = end != nullptr ? static_cast<size_t>(end - (sReport + start)) : sReportLen - start;
+        char line[200];
+        snprintf(line, sizeof(line), "X %.*s", static_cast<int>(length < 190 ? length : 190), sReport + start);
+        Switch2Debug_Log(line);
+        start += length + 1;
+    }
     mkdir("logs", 0777);
     char path[64];
     time_t now = time(nullptr);

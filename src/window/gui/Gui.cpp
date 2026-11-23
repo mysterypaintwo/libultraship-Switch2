@@ -133,6 +133,21 @@ void Gui::Init(GuiWindowInitData windowImpl) {
                                                           &iconsConfig, sIconsRanges);
 #ifdef __SWITCH__
     Ship::Switch::ImGuiSetupFont(mImGuiIo->Fonts);
+#ifdef __SWITCH2__
+    {
+        // The first font is ImGui's 13 px default, too small at 1080p. Use the
+        // console's font at full size, with the menu icons merged into it.
+        ImFont* uiFont = mImGuiIo->Fonts->Fonts.back();
+        const float uiIconSize = uiFont->FontSize * 2.0f / 3.0f;
+        ImFontConfig uiIconsConfig;
+        uiIconsConfig.MergeMode = true;
+        uiIconsConfig.PixelSnapH = true;
+        uiIconsConfig.GlyphMinAdvanceX = uiIconSize;
+        mImGuiIo->Fonts->AddFontFromMemoryCompressedBase85TTF(fontawesome_compressed_data_base85, uiIconSize,
+                                                              &uiIconsConfig, sIconsRanges);
+        mImGuiIo->FontDefault = uiFont;
+    }
+#endif
 #endif
 
 #if defined(__ANDROID__)
@@ -523,9 +538,11 @@ void Gui::DrawMenu() {
                                    ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
                                    ImGuiWindowFlags_NoResize;
 
+#ifndef __SWITCH2__ // Switch 2 draws the menu as a full-screen overlay instead.
     if (GetMenuBar() && GetMenuBar()->IsVisible()) {
         windowFlags |= ImGuiWindowFlags_MenuBar;
     }
+#endif
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);

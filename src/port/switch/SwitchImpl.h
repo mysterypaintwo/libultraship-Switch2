@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+#include <vector>
 #include <cstdint>
 #include <string>
 
@@ -33,5 +35,11 @@ class Switch {
     static void ApplyOverclock();
     static void ThrowMissingOTR(std::string OTRPath);
     static void PrintErrorMessageToScreen(const char* str, ...);
+    // Shows a message on the console's text screen, waits for A, and returns to
+    // the homebrew menu. It needs no window or OpenGL, so it works during boot.
+    [[noreturn]] static void ShowSetupErrorAndExit(const char* title, const std::string& body);
+    // Stops with that screen if game files are missing. One of anyOf is enough.
+    static void RequireGameFiles(const char* gameName, const char* folder, const std::vector<std::string>& required,
+                                 const std::vector<std::string>& anyOf, const char* help);
 };
 }; // namespace Ship

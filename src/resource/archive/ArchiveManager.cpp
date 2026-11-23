@@ -12,6 +12,9 @@
 #include "utils/StringHelper.h"
 #include "utils/glob.h"
 #include "utils/StrHash64.h"
+#ifdef __SWITCH__
+#include "port/switch/Switch2Debug.h"
+#endif
 
 namespace Ship {
 ArchiveManager::ArchiveManager() {
@@ -278,6 +281,9 @@ std::shared_ptr<Archive> ArchiveManager::AddArchive(std::shared_ptr<Archive> arc
             mDirectories.insert(dir);
         }
     }
+#ifdef __SWITCH__
+    Switch2Debug_Log("B archive:added");
+#endif
     return archive;
 }
 

@@ -363,6 +363,12 @@ class Interpreter {
     void GetDimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY);
     GfxRenderingAPI* GetCurrentRenderingAPI();
     void StartFrame();
+    // Builds these shaders now (console boot), so the first frame using them does not stall.
+    void PrepareShaders(const std::vector<std::pair<uint64_t, uint64_t>>& shaders, void (*progress)(int, int));
+#ifdef __SWITCH__
+    // Makes the driver finish their GPU code with invisible draws.
+    void WarmShaders(const std::vector<std::pair<uint64_t, uint64_t>>& shaders, void (*progress)(int, int));
+#endif
     void Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_replacements);
     void EndFrame();
     void HandleWindowEvents();

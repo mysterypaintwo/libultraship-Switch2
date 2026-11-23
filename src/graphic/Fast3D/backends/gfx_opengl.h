@@ -60,6 +60,13 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint32_t shaderId1) override;
     ShaderProgram* LookupShader(uint64_t shaderId0, uint32_t shaderId1) override;
     void ShaderGetInfo(ShaderProgram* prg, uint8_t* numInputs, bool usedTextures[2]) override;
+#ifdef __SWITCH__
+    // Invisible draws that make the driver finish a shader's GPU code during
+    // boot, instead of during the first frame that uses it.
+    void BeginShaderWarmup();
+    void WarmLoadedShader(ShaderProgram* prg);
+    void EndShaderWarmup();
+#endif
     uint32_t NewTexture() override;
     void SelectTexture(int tile, uint32_t textureId) override;
     void UploadTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;

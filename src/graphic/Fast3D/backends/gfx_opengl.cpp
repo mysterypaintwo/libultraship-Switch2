@@ -26,6 +26,11 @@
 #include <resource/factory/ShaderFactory.h>
 #include "../interpreter.h"
 #include <public/bridge/consolevariablebridge.h>
+#include "port/switch/Switch2Debug.h"
+#ifdef __SWITCH__
+#include "port/switch/SwitchShaderCache.h"
+#include <set>
+#endif
 
 // Core-profile OpenGL: GLSL 4.10 core shaders and a bound vertex array object.
 // macOS needs it. Switch 2 uses it too: there OpenGL is Zink on Vulkan, which
@@ -382,6 +387,11 @@ static std::string BuildVsShader(const CCFeatures& cc_features) {
 }
 
 ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, uint32_t shader_id1) {
+    SWITCH2_PROF(SW2P_SHADER);
+    Switch2Prof_Count(SW2C_SHADERS, 1);
+#ifdef __SWITCH__
+    const unsigned long shaderT0 = Switch2Debug_Micros();
+#endif
     CCFeatures cc_features;
     gfx_cc_get_features(shader_id0, shader_id1, &cc_features);
     const auto fs_buf = BuildFsShader(cc_features);
@@ -389,6 +399,14 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     const GLchar* sources[2] = { vs_buf.data(), fs_buf.data() };
     const GLint lengths[2] = { (GLint)vs_buf.size(), (GLint)fs_buf.size() };
     GLint success;
+#ifdef __SWITCH__
+    // Identical source means an identical program, so it is only built once.
+    const uint64_t sourceHash =
+        SwitchShaderCache_HashSources(vs_buf.data(), vs_buf.size(), fs_buf.data(), fs_buf.size());
+    const char* shaderOrigin = "compiled";
+    GLuint shader_program = SwitchShaderCache_Acquire(shader_id0, shader_id1, sourceHash, &shaderOrigin);
+    if (shader_program == 0) {
+#endif
 
     GLuint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertex_shader, 1, &sources[0], &lengths[0]);
@@ -418,10 +436,29 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
         abort();
     }
 
+#ifdef __SWITCH__
+    shader_program = glCreateProgram();
+    SwitchShaderCache_MarkRetrievable(shader_program);
+#else
     GLuint shader_program = glCreateProgram();
+#endif
     glAttachShader(shader_program, vertex_shader);
     glAttachShader(shader_program, fragment_shader);
     glLinkProgram(shader_program);
+#ifdef __SWITCH__
+    SwitchShaderCache_Store(shader_id0, shader_id1, sourceHash, shader_program);
+    glDeleteShader(vertex_shader);
+    glDeleteShader(fragment_shader);
+    }
+    if (Switch2Debug_Enabled()) {
+        static int sShadersSeen = 0;
+        char line[160];
+        snprintf(line, sizeof(line), "C %d id=%016llx:%016llx source=%016llx %s us=%lu", sShadersSeen++,
+                 (unsigned long long)shader_id0, (unsigned long long)shader_id1, (unsigned long long)sourceHash,
+                 shaderOrigin, Switch2Debug_Micros() - shaderT0);
+        Switch2Debug_Log(line);
+    }
+#endif
 
     size_t cnt = 0;
 
@@ -516,6 +553,97 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     return prg;
 }
 
+#ifdef __SWITCH__
+namespace {
+struct ShaderWarmup {
+    GLuint framebuffer = 0;
+    GLuint color = 0;
+    GLuint depth = 0;
+    bool framebufferOk = false;
+    GLint savedFramebuffer = 0;
+    GLint savedArrayBuffer = 0;
+    GLboolean blend = GL_FALSE;
+    GLboolean depthTest = GL_FALSE;
+    GLboolean depthMask = GL_TRUE;
+    GLboolean cull = GL_FALSE;
+    GLint blendSrcRgb = GL_ONE;
+    GLint blendDstRgb = GL_ZERO;
+    GLint blendSrcAlpha = GL_ONE;
+    GLint blendDstAlpha = GL_ZERO;
+    std::set<GLuint> warmed;
+} sWarmup;
+} // namespace
+
+void GfxRenderingAPIOGL::BeginShaderWarmup() {
+    sWarmup.blend = glIsEnabled(GL_BLEND);
+    sWarmup.depthTest = glIsEnabled(GL_DEPTH_TEST);
+    sWarmup.cull = glIsEnabled(GL_CULL_FACE);
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &sWarmup.depthMask);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &sWarmup.savedFramebuffer);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &sWarmup.savedArrayBuffer);
+    glGetIntegerv(GL_BLEND_SRC_RGB, &sWarmup.blendSrcRgb);
+    glGetIntegerv(GL_BLEND_DST_RGB, &sWarmup.blendDstRgb);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &sWarmup.blendSrcAlpha);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &sWarmup.blendDstAlpha);
+
+    // Same formats as the game's own framebuffers.
+    glGenFramebuffers(1, &sWarmup.framebuffer);
+    glGenRenderbuffers(1, &sWarmup.color);
+    glGenRenderbuffers(1, &sWarmup.depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, sWarmup.color);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB8, 16, 16);
+    glBindRenderbuffer(GL_RENDERBUFFER, sWarmup.depth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 16, 16);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, sWarmup.framebuffer);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, sWarmup.color);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, sWarmup.depth);
+    sWarmup.framebufferOk = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sWarmup.savedFramebuffer);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_DEPTH_TEST);
+}
+
+void GfxRenderingAPIOGL::WarmLoadedShader(ShaderProgram* prg) {
+    if (prg == nullptr || !sWarmup.warmed.insert(prg->openglProgramId).second) {
+        return;
+    }
+    // Three identical points make a triangle with no area: nothing is drawn,
+    // but the driver still has to prepare the pipeline.
+    static const float kZeroVertices[255 * 3] = {};
+    glBindBuffer(GL_ARRAY_BUFFER, mOpenglVbo);
+    glBufferData(GL_ARRAY_BUFFER, prg->numFloats * 3 * sizeof(float), kZeroVertices, GL_STREAM_DRAW);
+    const GLuint targets[2] = { 0, sWarmup.framebuffer };
+    for (int target = 0; target < (sWarmup.framebufferOk ? 2 : 1); target++) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, targets[target]);
+        // The game's two most common states: opaque, and blended without depth writes.
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glEnable(GL_BLEND);
+        glDepthMask(GL_FALSE);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sWarmup.savedFramebuffer);
+    glFinish();
+}
+
+void GfxRenderingAPIOGL::EndShaderWarmup() {
+    glBindFramebuffer(GL_FRAMEBUFFER, sWarmup.savedFramebuffer);
+    glDeleteFramebuffers(1, &sWarmup.framebuffer);
+    glDeleteRenderbuffers(1, &sWarmup.color);
+    glDeleteRenderbuffers(1, &sWarmup.depth);
+    glBindBuffer(GL_ARRAY_BUFFER, sWarmup.savedArrayBuffer);
+    glBlendFuncSeparate(sWarmup.blendSrcRgb, sWarmup.blendDstRgb, sWarmup.blendSrcAlpha, sWarmup.blendDstAlpha);
+    sWarmup.blend ? glEnable(GL_BLEND) : glDisable(GL_BLEND);
+    sWarmup.depthTest ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
+    sWarmup.cull ? glEnable(GL_CULL_FACE) : glDisable(GL_CULL_FACE);
+    glDepthMask(sWarmup.depthMask);
+    std::set<GLuint>().swap(sWarmup.warmed);
+}
+#endif
+
 struct ShaderProgram* GfxRenderingAPIOGL::LookupShader(uint64_t shader_id0, uint32_t shader_id1) {
     auto it = mShaderProgramPool.find(std::make_pair(shader_id0, shader_id1));
     return it == mShaderProgramPool.end() ? nullptr : &it->second;
@@ -545,6 +673,9 @@ void GfxRenderingAPIOGL::SelectTexture(int tile, GLuint texture_id) {
 }
 
 void GfxRenderingAPIOGL::UploadTexture(const uint8_t* rgba32_buf, uint32_t width, uint32_t height) {
+    SWITCH2_PROF(SW2P_UPLOAD);
+    Switch2Prof_Count(SW2C_UPLOADS, 1);
+    Switch2Prof_Count(SW2C_UPLOAD_KB, width * height * 4 / 1024);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba32_buf);
     textures[mCurrentTextureIds[mCurrentTile]].width = width;
     textures[mCurrentTextureIds[mCurrentTile]].height = height;
@@ -604,6 +735,9 @@ void GfxRenderingAPIOGL::SetUseAlpha(bool use_alpha) {
 }
 
 void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
+    SWITCH2_PROF(SW2P_DRAW);
+    Switch2Prof_Count(SW2C_DRAWS, 1);
+    Switch2Prof_Count(SW2C_TRIS, static_cast<unsigned int>(buf_vbo_num_tris));
     if (mCurrentDepthTest != mLastDepthTest || mCurrentDepthMask != mLastDepthMask) {
         mLastDepthTest = mCurrentDepthTest;
         mLastDepthMask = mCurrentDepthMask;
@@ -704,7 +838,9 @@ void GfxRenderingAPIOGL::StartFrame() {
 }
 
 void GfxRenderingAPIOGL::EndFrame() {
+    Switch2Prof_Begin(SW2P_GL_FLUSH);
     glFlush();
+    Switch2Prof_End(SW2P_GL_FLUSH);
 }
 
 void GfxRenderingAPIOGL::FinishRender() {
@@ -794,6 +930,7 @@ void GfxRenderingAPIOGL::UpdateFramebufferParameters(int fb_id, uint32_t width, 
 }
 
 void GfxRenderingAPIOGL::StartDrawToFramebuffer(int fb_id, float noise_scale) {
+    Switch2Prof_Count(SW2C_FB_BINDS, 1);
     FramebufferOGL& fb = mFrameBuffers[fb_id];
 
     if (noise_scale != 0.0f) {
@@ -840,6 +977,7 @@ void GfxRenderingAPIOGL::SelectTextureFb(int fb_id) {
 
 void GfxRenderingAPIOGL::CopyFramebuffer(int fb_dst_id, int fb_src_id, int srcX0, int srcY0, int srcX1, int srcY1,
                                          int dstX0, int dstY0, int dstX1, int dstY1) {
+    SWITCH2_PROF(SW2P_FB_COPY);
     if (fb_dst_id >= (int)mFrameBuffers.size() || fb_src_id >= (int)mFrameBuffers.size()) {
         return;
     }
@@ -905,6 +1043,7 @@ void GfxRenderingAPIOGL::CopyFramebuffer(int fb_dst_id, int fb_src_id, int srcX0
 }
 
 void GfxRenderingAPIOGL::ReadFramebufferToCPU(int fb_id, uint32_t width, uint32_t height, uint16_t* rgba16_buf) {
+    SWITCH2_PROF(SW2P_FB_READ);
     if (fb_id >= (int)mFrameBuffers.size()) {
         return;
     }
@@ -916,6 +1055,7 @@ void GfxRenderingAPIOGL::ReadFramebufferToCPU(int fb_id, uint32_t width, uint32_
 
 std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff>
 GfxRenderingAPIOGL::GetPixelDepth(int fb_id, const std::set<std::pair<float, float>>& coordinates) {
+    SWITCH2_PROF(SW2P_FB_READ);
     std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff> res;
 
     FramebufferOGL& fb = mFrameBuffers[fb_id];

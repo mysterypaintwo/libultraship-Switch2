@@ -8,6 +8,13 @@ find_package(OpenGL QUIET)
 set(imgui_fixes_and_config_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/combined.patch)
 set(imgui_apply_patch_command ${CMAKE_COMMAND} -Dpatch_file=${imgui_fixes_and_config_patch_file} -Dwith_reset=TRUE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
 
+# Switch 2: larger window close button.
+set(imgui_switch2_close_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/imgui-switch2-close-button.patch)
+list(APPEND imgui_apply_patch_command COMMAND ${CMAKE_COMMAND} -Dpatch_file=${imgui_switch2_close_patch_file} -Dwith_reset=FALSE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
+# Switch 2: holding Y must not open the window switcher.
+set(imgui_switch2_switcher_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/imgui-switch2-no-window-switcher.patch)
+list(APPEND imgui_apply_patch_command COMMAND ${CMAKE_COMMAND} -Dpatch_file=${imgui_switch2_switcher_patch_file} -Dwith_reset=FALSE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
+
 FetchContent_Declare(
     ImGui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git

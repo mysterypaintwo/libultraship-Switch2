@@ -7,6 +7,10 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <stdio.h>
+#include "port/switch/Switch2Debug.h"
+#ifdef __SWITCH__
+#include "backends/gfx_opengl.h"
+#endif
 
 #include <any>
 #include <map>
@@ -139,6 +143,38 @@ ShaderProgram* Interpreter::LookupOrCreateShaderProgram(uint64_t id0, uint64_t i
     }
     return prg;
 }
+
+void Interpreter::PrepareShaders(const std::vector<std::pair<uint64_t, uint64_t>>& shaders,
+                                 void (*progress)(int, int)) {
+    for (size_t i = 0; i < shaders.size(); i++) {
+        LookupOrCreateShaderProgram(shaders[i].first, shaders[i].second);
+        if (progress != nullptr) {
+            progress(static_cast<int>(i + 1), static_cast<int>(shaders.size()));
+        }
+    }
+    mRapi->UnloadShader(mRenderingState.mShaderProgram);
+    mRenderingState.mShaderProgram = nullptr;
+}
+
+#ifdef __SWITCH__
+void Interpreter::WarmShaders(const std::vector<std::pair<uint64_t, uint64_t>>& shaders, void (*progress)(int, int)) {
+    // Switch builds always render with the OpenGL backend.
+    auto* gl = static_cast<GfxRenderingAPIOGL*>(mRapi);
+    gl->BeginShaderWarmup();
+    for (size_t i = 0; i < shaders.size(); i++) {
+        ShaderProgram* prg = mRapi->LookupShader(shaders[i].first, shaders[i].second);
+        if (prg != nullptr) {
+            mRapi->LoadShader(prg);
+            gl->WarmLoadedShader(prg);
+            mRapi->UnloadShader(prg);
+        }
+        if (progress != nullptr) {
+            progress(static_cast<int>(i + 1), static_cast<int>(shaders.size()));
+        }
+    }
+    gl->EndShaderWarmup();
+}
+#endif
 
 const char* Interpreter::CCMUXtoStr(uint32_t ccmux) {
     static constexpr std::array tbl = {

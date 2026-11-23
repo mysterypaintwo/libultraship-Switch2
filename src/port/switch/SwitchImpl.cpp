@@ -1,6 +1,10 @@
 #ifdef __SWITCH__
 #include "SwitchImpl.h"
 #include <atomic>
+#include <cstring>
+#include <cstdio>
+#include <filesystem>
+#include <pthread.h>
 #include <switch.h>
 #include <SDL2/SDL.h>
 #include "SwitchPerformanceProfiles.h"
@@ -24,17 +28,45 @@
 
 static AppletHookCookie applet_hook_cookie;
 static bool isRunning = true;
-static bool hasFocus = true;
-static bool isShowingVirtualKeyboard = true;
+// Written by the applet hook, read by the audio thread (SDLAudioPlayer.cpp).
+static std::atomic<bool> hasFocus = true;
+// pl (shared system fonts) stays open while ImGui can read the fonts.
+static bool sPlInitialized = false;
+static bool isShowingVirtualKeyboard = false;
 
 void DetectAppletMode();
 
-// Set when the app gets the focus back (for example after sleep). The audio
-// thread re-opens the SDL audio device on its next frame (audiobridge.cpp).
-static std::atomic<bool> sAudioReopenRequested = false;
+// Thread stacks. libnx/libounce give a thread 128 KiB of stack when the
+// program does not ask for a size, and std::thread never asks. Desktop threads
+// get 512 KiB (macOS) to 8 MiB (Linux), and the game's audio thread, the
+// resource loader and the decoders were written for that. A thread that runs
+// past its stack here writes over other memory without faulting, and the
+// program crashes later somewhere else. The link wraps pthread_create
+// (-Wl,--wrap=pthread_create, src/CMakeLists.txt) to give such threads 1 MiB.
+extern "C" int __real_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg);
 
-extern "C" bool LusSwitch_TakeAudioReopenRequest() {
-    return sAudioReopenRequested.exchange(false);
+extern "C" int __wrap_pthread_create(pthread_t* thread, const pthread_attr_t* attr, void* (*start)(void*), void* arg) {
+    constexpr size_t kDefaultStackSize = 1024 * 1024;
+    size_t stackSize = 0;
+    if (attr != nullptr && (pthread_attr_getstacksize(attr, &stackSize) != 0 || stackSize != 0)) {
+        return __real_pthread_create(thread, attr, start, arg);
+    }
+    pthread_attr_t sized;
+    if (attr != nullptr) {
+        sized = *attr;
+    } else {
+        pthread_attr_init(&sized);
+    }
+    pthread_attr_setstacksize(&sized, kDefaultStackSize);
+    int result = __real_pthread_create(thread, &sized, start, arg);
+    if (attr == nullptr) {
+        pthread_attr_destroy(&sized);
+    }
+    return result;
+}
+
+extern "C" bool LusSwitch_HasFocus() {
+    return hasFocus;
 }
 
 static void on_applet_hook(AppletHookType hook, void* param);
@@ -50,10 +82,17 @@ void Ship::Switch::Init(SwitchPhase phase) {
             SwitchCrashReport::Install();
             DetectAppletMode();
             break;
-        case PostInitPhase:
+        case PostInitPhase: {
+            // Both the engine and Context::InitResourceManager run this phase.
+            // Starting the socket service or the applet hook twice is fatal.
+            static bool sPostInitDone = false;
+            if (sPostInitDone) {
+                break;
+            }
+            sPostInitDone = true;
             appletInitializeGamePlayRecording();
+            socketInitializeDefault(); // also used by the debug stream
 #ifdef DEBUG
-            socketInitializeDefault();
             nxlinkStdio();
 #endif
             appletSetGamePlayRecordingState(true);
@@ -64,13 +103,16 @@ void Ship::Switch::Init(SwitchPhase phase) {
             }
 #endif
             break;
+        }
     }
 }
 
 void Ship::Switch::Exit() {
-#ifdef DEBUG
+    if (sPlInitialized) {
+        plExit();
+        sPlInitialized = false;
+    }
     socketExit();
-#endif
 #ifndef __SWITCH2__
     clkrstExit();
 #endif
@@ -78,7 +120,9 @@ void Ship::Switch::Exit() {
 }
 
 void Ship::Switch::ImGuiSetupFont(ImFontAtlas* fonts) {
-    plInitialize(PlServiceType_User);
+    if (!sPlInitialized) {
+        plInitialize(PlServiceType_User);
+    }
     static PlFontData stdFontData, extFontData;
 
     PlFontData fonts_std;
@@ -94,6 +138,10 @@ void Ship::Switch::ImGuiSetupFont(ImFontAtlas* fonts) {
     fonts->AddFontFromMemoryTTF(fonts_std.address, fonts_std.size, SWITCH_FONT_SIZE, &config, fonts->GetGlyphRangesCyrillic());
 
     strcpy(config.Name, "Nintendo Ext");
+#ifdef __SWITCH2__
+    // One font, so that it can be the UI's default (see Gui::Init).
+    config.MergeMode = true;
+#endif
     static const ImWchar ranges[] = {
         0xE000, 0xE06B, 0xE070, 0xE07E, 0xE080, 0xE099, 0xE0A0, 0xE0BA, 0xE0C0, 0xE0D6, 0xE0E0, 0xE0F5, 0xE100,
         0xE105, 0xE110, 0xE116, 0xE121, 0xE12C, 0xE130, 0xE13C, 0xE140, 0xE14D, 0xE150, 0xE153, 0,
@@ -102,24 +150,43 @@ void Ship::Switch::ImGuiSetupFont(ImFontAtlas* fonts) {
     fonts->AddFontFromMemoryTTF(fonts_ext.address, fonts_ext.size, SWITCH_FONT_SIZE, &config, ranges);
     fonts->Build();
 
-    plExit();
+    // No plExit() here: the atlas keeps pointers into the shared font memory
+    // (FontDataOwnedByAtlas = false), and plExit() unmaps it. The atlas is
+    // built again whenever a font is added later, which read the unmapped
+    // memory. Exit() closes pl.
+    sPlInitialized = true;
 }
 
 void Ship::Switch::ImGuiProcessEvent(bool wantsTextInput) {
     ImGuiInputTextState* state = ImGui::GetInputTextState(ImGui::GetActiveID());
-
+    ImGuiIO& io = ImGui::GetIO();
     if (wantsTextInput) {
         if (!isShowingVirtualKeyboard) {
+            // WantTextInput comes from the last frame: the widget that wanted
+            // text may be gone, and then there is no state.
+            if (state == nullptr) {
+                return;
+            }
+            static SwkbdConfig keyboard;
+            static bool keyboardReady = false;
+            if (!keyboardReady) {
+                if (R_FAILED(swkbdCreate(&keyboard, 0))) {
+                    SPDLOG_ERROR("Failed to create the on-screen keyboard");
+                    return;
+                }
+                swkbdConfigMakePresetDefault(&keyboard);
+                keyboardReady = true;
+            }
+            static char kbBuffer[256];
             state->ClearText();
-
             isShowingVirtualKeyboard = true;
-            SDL_StartTextInput();
+            memset(kbBuffer, 0, sizeof(kbBuffer));
+            swkbdShow(&keyboard, kbBuffer, sizeof(kbBuffer));
+            io.SetAppAcceptingEvents(true);
+            io.AddInputCharactersUTF8(kbBuffer);
         }
-    } else {
-        if (isShowingVirtualKeyboard) {
-            isShowingVirtualKeyboard = false;
-            SDL_StopTextInput();
-        }
+    } else if (isShowingVirtualKeyboard) {
+        isShowingVirtualKeyboard = false;
     }
 }
 
@@ -255,9 +322,6 @@ static void on_applet_hook(AppletHookType hook, void* param) {
                 // reinitialize audio subsystem to fix audio problems after resuming from sleep
                 // see https://github.com/HarbourMasters/Shipwright/issues/3317
                 SPDLOG_INFO("restarting SDL audio system to work around audio problems on resume");
-                // Only ask for it here: the audio thread may be using the player right
-                // now. AudioPlayerPlayFrame re-opens the device on that thread.
-                sAudioReopenRequested = true;
             }
 
             break;
@@ -301,6 +365,61 @@ void DetectAppletMode() {
                                             "\x1b[5;2HHold R when opening any game to enter HBMenu."
                                             "\x1b[44;2H%s.",
                                             RandomTexts[rand() % 25]);
+}
+
+void Ship::Switch::ShowSetupErrorAndExit(const char* title, const std::string& body) {
+    consoleInit(NULL);
+    printf("\x1b[2;2H%s\n\n", title);
+    size_t start = 0;
+    while (start <= body.size()) {
+        size_t end = body.find('\n', start);
+        if (end == std::string::npos) {
+            end = body.size();
+        }
+        printf(" %s\n", body.substr(start, end - start).c_str());
+        start = end + 1;
+    }
+    printf("\n Press A to return to the Homebrew Menu.\n");
+
+    padConfigureInput(8, HidNpadStyleSet_NpadStandard);
+    PadState pad;
+    padInitializeDefault(&pad);
+    while (appletMainLoop()) {
+        padUpdate(&pad);
+        if (padGetButtonsDown(&pad) & HidNpadButton_A) {
+            break;
+        }
+        consoleUpdate(NULL);
+    }
+    consoleExit(NULL);
+    
+    exit(0);
+}
+
+void Ship::Switch::RequireGameFiles(const char* gameName, const char* folder, const std::vector<std::string>& required,
+                                    const std::vector<std::string>& anyOf, const char* help) {
+    std::string missing;
+    for (const auto& file : required) {
+        if (!std::filesystem::exists(file)) {
+            missing += "  - " + file + "\n";
+        }
+    }
+    if (!anyOf.empty()) {
+        bool found = false;
+        std::string names;
+        for (const auto& file : anyOf) {
+            found = found || std::filesystem::exists(file);
+            names += (names.empty() ? "" : " or ") + file;
+        }
+        if (!found) {
+            missing += "  - " + names + "\n";
+        }
+    }
+    if (missing.empty()) {
+        return;
+    }
+    ShowSetupErrorAndExit((std::string(gameName) + " is not set up yet").c_str(),
+                          "These files are missing from " + std::string(folder) + ":\n\n" + missing + "\n" + help);
 }
 
 void Ship::Switch::ThrowMissingOTR(std::string OTRPath) {

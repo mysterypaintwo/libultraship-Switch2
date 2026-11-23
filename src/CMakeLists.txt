@@ -118,6 +118,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
             ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchImpl.h
             ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchImpl.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchCrashReport.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/Switch2Debug.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchLoading.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchLoading.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchShaderCache.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchShaderCache.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/port/switch/SwitchPerformanceProfiles.h
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -129,6 +134,10 @@ endif()
 
 source_group("port" FILES ${Source_Files__Port})
 target_sources(libultraship PRIVATE ${Source_Files__Port})
+if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # Gives threads that do not ask for a stack size 1 MiB (SwitchImpl.cpp).
+    target_link_options(libultraship INTERFACE "-Wl,--wrap=pthread_create")
+endif()
 
 #=================== Resource ===================
 

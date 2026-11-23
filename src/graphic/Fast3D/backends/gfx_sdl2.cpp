@@ -1,3 +1,4 @@
+#include "port/switch/Switch2Debug.h"
 #include <stdio.h>
 
 #ifndef __SWITCH__
@@ -735,8 +736,13 @@ void GfxWindowBackendSDL2::SwapBuffersBegin() {
         SDL_RenderSetVSync(mRenderer, mVsyncEnabled ? 1 : 0);
     }
 
+    Switch2Prof_Begin(SW2P_PACE);
     SyncFramerateWithTime();
+    Switch2Prof_End(SW2P_PACE);
+    Switch2Prof_Begin(SW2P_SWAP);
     SDL_GL_SwapWindow(mWnd);
+    Switch2Prof_End(SW2P_SWAP);
+    Switch2Prof_Present(mTargetFps);
 }
 
 void GfxWindowBackendSDL2::SwapBuffersEnd() {
