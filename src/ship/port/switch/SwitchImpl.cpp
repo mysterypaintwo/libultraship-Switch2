@@ -1,6 +1,8 @@
 #ifdef __SWITCH__
 #include "SwitchImpl.h"
 #include <atomic>
+#include <cstdio>
+#include <filesystem>
 #include <pthread.h>
 #include <switch.h>
 #include <SDL2/SDL.h>
@@ -382,6 +384,61 @@ void DetectAppletMode() {
                                   "%s.",
                                   RandomTexts[rand() % (sizeof(RandomTexts) / sizeof(RandomTexts[0]))]);
     exit(1);
+}
+
+void Ship::Switch::ShowSetupErrorAndExit(const char* title, const std::string& body) {
+    consoleInit(NULL);
+    printf("\x1b[2;2H%s\n\n", title);
+    size_t start = 0;
+    while (start <= body.size()) {
+        size_t end = body.find('\n', start);
+        if (end == std::string::npos) {
+            end = body.size();
+        }
+        printf(" %s\n", body.substr(start, end - start).c_str());
+        start = end + 1;
+    }
+    printf("\n Press A to return to the Homebrew Menu.\n");
+
+    padConfigureInput(8, HidNpadStyleSet_NpadStandard);
+    PadState pad;
+    padInitializeDefault(&pad);
+    while (appletMainLoop()) {
+        padUpdate(&pad);
+        if (padGetButtonsDown(&pad) & HidNpadButton_A) {
+            break;
+        }
+        consoleUpdate(NULL);
+    }
+    consoleExit(NULL);
+    LusSwitch_NoteQuit("setup screen");
+    exit(0);
+}
+
+void Ship::Switch::RequireGameFiles(const char* gameName, const char* folder, const std::vector<std::string>& required,
+                                    const std::vector<std::string>& anyOf, const char* help) {
+    std::string missing;
+    for (const auto& file : required) {
+        if (!std::filesystem::exists(file)) {
+            missing += "  - " + file + "\n";
+        }
+    }
+    if (!anyOf.empty()) {
+        bool found = false;
+        std::string names;
+        for (const auto& file : anyOf) {
+            found = found || std::filesystem::exists(file);
+            names += (names.empty() ? "" : " or ") + file;
+        }
+        if (!found) {
+            missing += "  - " + names + "\n";
+        }
+    }
+    if (missing.empty()) {
+        return;
+    }
+    ShowSetupErrorAndExit((std::string(gameName) + " is not set up yet").c_str(),
+                          "These files are missing from " + std::string(folder) + ":\n\n" + missing + "\n" + help);
 }
 
 void Ship::Switch::ThrowMissingOTR(std::string otrPath) {

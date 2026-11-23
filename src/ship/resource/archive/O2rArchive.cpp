@@ -28,7 +28,7 @@ constexpr size_t kArchiveReadChunk = 1024 * 1024;
 
 const ArchiveImage* GetArchiveImage(const std::string& path) {
     const std::string name = std::filesystem::path(path).filename().string();
-    if (name != "mm.o2r" && name != "2ship.o2r") {
+    if (name != "oot.o2r" && name != "oot-mq.o2r" && name != "soh.o2r") {
         return nullptr;
     }
 

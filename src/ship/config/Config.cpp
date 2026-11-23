@@ -18,6 +18,7 @@ Config::Config(std::string path) : mPath(std::move(path)), mIsNewInstance(false)
 
 Config::~Config() {
     SPDLOG_TRACE("destruct config");
+    FlushPendingSave();
 }
 
 std::string Config::FormatNestedKey(const std::string& key) {
@@ -194,6 +195,7 @@ void Config::Copy(const std::string& fromKey, const std::string& toKey) {
 }
 
 void Config::Reload() {
+    FlushPendingSave();
     if (mPath == "None" || !fs::exists(mPath) || !fs::is_regular_file(mPath)) {
         mIsNewInstance = true;
         mFlattenedJson = nlohmann::json::object();
@@ -212,6 +214,23 @@ void Config::Reload() {
 }
 
 void Config::Save() {
+#ifdef __SWITCH__
+    // A save rewrites the whole file on the SD card, and clearing or resetting
+    // controls saves once per mapping, which froze the game for seconds.
+    // Gui::EndDraw writes pending changes at most once a second.
+    mSavePending = true;
+#else
+    WriteToDisk();
+#endif
+}
+
+void Config::FlushPendingSave() {
+    if (mSavePending.exchange(false)) {
+        WriteToDisk();
+    }
+}
+
+void Config::WriteToDisk() {
     mNestedJson = mFlattenedJson.unflatten();
     const fs::path configPath(mPath);
     const fs::path tempPath = configPath.parent_path() / (configPath.filename().string() + ".tmp");

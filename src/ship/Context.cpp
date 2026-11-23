@@ -67,6 +67,9 @@ Context::~Context() {
     if (mConfig != nullptr) {
         mConfig->Save();
     }
+    if (mConfig != nullptr) {
+        mConfig->FlushPendingSave();
+    }
     mConfig = nullptr;
     if (mLogger != nullptr) {
         mLogger->flush();
