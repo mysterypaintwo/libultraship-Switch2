@@ -11,9 +11,12 @@ set(imgui_patch_base_command ${CMAKE_COMMAND} -Dpatch_file=${imgui_fixes_and_con
 set(imgui_patch_switch_command ${CMAKE_COMMAND} -Dpatch_file=${imgui_switch_patch_file} -Dwith_reset=FALSE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
 set(imgui_switch2_close_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/imgui-switch2-close-button.patch)
 set(imgui_patch_switch2_close_command ${CMAKE_COMMAND} -Dpatch_file=${imgui_switch2_close_patch_file} -Dwith_reset=FALSE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
+# Switch 2: holding Y must not open the window switcher.
+set(imgui_switch2_switcher_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/imgui-switch2-no-window-switcher.patch)
+set(imgui_patch_switch2_switcher_command ${CMAKE_COMMAND} -Dpatch_file=${imgui_switch2_switcher_patch_file} -Dwith_reset=FALSE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
-    set(imgui_apply_patch_command ${imgui_patch_base_command} COMMAND ${imgui_patch_switch_command} COMMAND ${imgui_patch_switch2_close_command})
+    set(imgui_apply_patch_command ${imgui_patch_base_command} COMMAND ${imgui_patch_switch_command} COMMAND ${imgui_patch_switch2_close_command} COMMAND ${imgui_patch_switch2_switcher_command})
 else()
     set(imgui_apply_patch_command ${imgui_patch_base_command})
 endif()
